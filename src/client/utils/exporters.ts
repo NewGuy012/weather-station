@@ -1,4 +1,9 @@
-import type { StateDetailResponse, TempUnit, WeatherDatasetResponse } from '../../shared/types';
+import type {
+  StateDetailResponse,
+  StateWeatherSnapshot,
+  TempUnit,
+  WeatherDatasetResponse,
+} from '../../shared/types';
 import {
   convertTemp,
   convertWind,
@@ -10,13 +15,34 @@ import {
 import { getWmoInfo } from '../../shared/wmoCodes';
 import { resolveStateSlice } from './scales';
 
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const NUMERIC_LITERAL = /^-?\d+(?:\.\d+)?$/;
+
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return '';
-  const str = String(val);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+  let str = String(val);
+  // Neutralize spreadsheet formula injection for non-numeric strings
+  if (typeof val === 'string' && FORMULA_PREFIX.test(str) && !NUMERIC_LITERAL.test(str)) {
+    str = `'${str}`;
+  }
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
+}
+
+export function getSortedStates(
+  states: Record<string, StateWeatherSnapshot>,
+): StateWeatherSnapshot[] {
+  return Object.values(states).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function resolveActiveTimestamp(
+  dataset: Pick<WeatherDatasetResponse, 'timelineHours' | 'fetchedAt'>,
+  timelineIndex: number,
+  useTimeline: boolean,
+): string {
+  return useTimeline ? dataset.timelineHours[timelineIndex] ?? dataset.fetchedAt : dataset.fetchedAt;
 }
 
 export function buildStatesCsv(
@@ -43,35 +69,29 @@ export function buildStatesCsv(
     'Timestamp',
   ];
 
-  const rows = Object.values(dataset.states)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((snap) => {
-      const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-      const wmo = getWmoInfo(slice.weatherCode);
-      const ts = useTimeline ? dataset.timelineHours[timelineIndex] ?? dataset.fetchedAt : dataset.fetchedAt;
-      const windNum = convertWind(slice.windSpeedMph, unit);
-      const precipVal = formatPrecipValue(slice.precipitationMm, unit);
-
-      return [
-        snap.code,
-        snap.name,
-        snap.city,
-        convertTemp(slice.temperatureF, unit),
-        convertTemp(slice.apparentTemperatureF, unit),
-        convertTemp(snap.current.tempHighF, unit),
-        convertTemp(snap.current.tempLowF, unit),
-        wmo.label,
-        windNum,
-        degToCompass(slice.windDirectionDeg),
-        Math.round(slice.humidity),
-        precipVal,
-        snap.current.usAqi ?? '',
-        snap.current.uvIndex ?? '',
-        ts,
-      ]
-        .map(escapeCsv)
-        .join(',');
-    });
+  const ts = resolveActiveTimestamp(dataset, timelineIndex, useTimeline);
+  const rows = getSortedStates(dataset.states).map((snap) => {
+    const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
+    return [
+      snap.code,
+      snap.name,
+      snap.city,
+      convertTemp(slice.temperatureF, unit),
+      convertTemp(slice.apparentTemperatureF, unit),
+      convertTemp(snap.current.tempHighF, unit),
+      convertTemp(snap.current.tempLowF, unit),
+      getWmoInfo(slice.weatherCode).label,
+      convertWind(slice.windSpeedMph, unit),
+      degToCompass(slice.windDirectionDeg),
+      Math.round(slice.humidity),
+      formatPrecipValue(slice.precipitationMm, unit),
+      snap.current.usAqi ?? '',
+      snap.current.uvIndex ?? '',
+      ts,
+    ]
+      .map(escapeCsv)
+      .join(',');
+  });
 
   return [header.map(escapeCsv).join(','), ...rows].join('\n');
 }
@@ -146,7 +166,6 @@ export async function exportMapAsPng(
   ctx.fillStyle = isDark ? '#090e1a' : '#f5f7fa';
   ctx.fillRect(0, 0, outW, outH);
 
-  // Header
   ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
   ctx.font = '600 34px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
   ctx.fillText(title, 54, 56);
@@ -155,7 +174,6 @@ export async function exportMapAsPng(
   ctx.font = '400 22px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
   ctx.fillText(subtitle, 54, 90);
 
-  // Draw SVGs and Canvases inside mapStageEl in DOM paint order
   const svgs = Array.from(mapStageEl.querySelectorAll('svg'));
   const canvases = Array.from(mapStageEl.querySelectorAll('canvas'));
 
@@ -164,8 +182,7 @@ export async function exportMapAsPng(
     clone.setAttribute('width', String(outW));
     clone.setAttribute('height', String(mapH));
     const xml = new XMLSerializer().serializeToString(clone);
-    const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
+    const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
     try {
       const img = new Image();
       img.width = outW;

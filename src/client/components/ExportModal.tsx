@@ -7,6 +7,8 @@ import {
   buildStateDetailCsv,
   buildStatesCsv,
   exportMapAsPng,
+  getSortedStates,
+  resolveActiveTimestamp,
   triggerDownload,
 } from '../utils/exporters';
 import { resolveStateSlice } from '../utils/scales';
@@ -39,13 +41,12 @@ export function ExportModal({
   mapContainerRef,
 }: ExportModalProps) {
   const [pngBusy, setPngBusy] = useState(false);
+  const [pngError, setPngError] = useState<string | null>(null);
 
   if (!open || !dataset) return null;
 
   const activeScope = scope === 'state' && detail ? 'state' : 'national';
-  const sortedStates = Object.values(dataset.states).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const sortedStates = getSortedStates(dataset.states);
 
   const handleDownloadCsv = () => {
     if (activeScope === 'state' && detail) {
@@ -69,16 +70,17 @@ export function ExportModal({
   const handleDownloadPng = async () => {
     if (!mapContainerRef.current) return;
     setPngBusy(true);
+    setPngError(null);
     try {
-      const ts = useTimeline
-        ? dataset.timelineHours[timelineIndex] ?? dataset.fetchedAt
-        : dataset.fetchedAt;
+      const ts = resolveActiveTimestamp(dataset, timelineIndex, useTimeline);
       await exportMapAsPng(
         mapContainerRef.current,
         'US Weather Station — 50-State Snapshot',
         `${dataset.mode === 'historical' ? 'Historical Archive' : 'Live Feed'} • ${ts}`,
         isDark,
       );
+    } catch (err) {
+      setPngError(err instanceof Error ? err.message : 'PNG export failed');
     } finally {
       setPngBusy(false);
     }
@@ -252,7 +254,9 @@ export function ExportModal({
         <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 dark:border-slate-800">
           <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Download size={12} />
-            <span>Ink-friendly white paper layout enabled for print</span>
+            <span className={pngError ? 'text-rose-500' : undefined}>
+              {pngError ?? 'Ink-friendly white paper layout enabled for print'}
+            </span>
           </span>
           <div className="flex items-center gap-2">
             <button

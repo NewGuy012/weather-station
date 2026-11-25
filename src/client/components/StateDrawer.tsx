@@ -34,7 +34,7 @@ import {
   uvCategory,
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
-import { METRIC_SCALES, resolveStateSlice } from '../utils/scales';
+import { METRIC_SCALES, resolveMetricValue, resolveStateSlice } from '../utils/scales';
 import { HourlyChart } from './HourlyChart';
 import { WeatherIcon } from './WeatherIcon';
 
@@ -301,9 +301,7 @@ export function StateDrawer({
                   const slice = resolveStateSlice(c, timelineIndex, useTimeline);
                   const active = c.name.toLowerCase() === selectedCity.toLowerCase();
                   const scaleConfig = METRIC_SCALES[metric];
-                  const rawMetric = slice.metricSource
-                    ? scaleConfig.extractTimeline(slice.metricSource, c.current)
-                    : scaleConfig.extractCurrent(c.current);
+                  const rawMetric = resolveMetricValue(scaleConfig, c.current, slice);
                   const metricDisplay = scaleConfig.formatMapValue(rawMetric, unit);
 
                   return (

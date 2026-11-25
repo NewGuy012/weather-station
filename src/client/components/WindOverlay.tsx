@@ -111,7 +111,7 @@ export function WindOverlay({
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
-      // Fade existing trails gently
+      // Fade trails without accumulating opaque fill
       ctx.save();
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';

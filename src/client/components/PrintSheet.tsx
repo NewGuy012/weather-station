@@ -5,6 +5,7 @@ import type {
 } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
+import { getSortedStates, resolveActiveTimestamp } from '../utils/exporters';
 import { resolveStateSlice } from '../utils/scales';
 
 interface PrintSheetProps {
@@ -26,14 +27,9 @@ export function PrintSheet({
 }: PrintSheetProps) {
   if (!dataset) return null;
 
-  const activeTime = useTimeline
-    ? dataset.timelineHours[timelineIndex] ?? dataset.fetchedAt
-    : dataset.fetchedAt;
-
+  const activeTime = resolveActiveTimestamp(dataset, timelineIndex, useTimeline);
   const showState = scope === 'state' && detail !== null;
-  const sortedStates = Object.values(dataset.states).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const sortedStates = getSortedStates(dataset.states);
 
   return (
     <div className="print-only bg-white p-2 text-slate-900">

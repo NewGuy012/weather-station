@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HISTORICAL_PRESETS } from '../../shared/presets';
 import type { StateMeta, TempUnit, ThemeMode, WeatherMode } from '../../shared/types';
+import { isEditableTarget } from '../utils/mapViewport';
 
 interface TopBarProps {
   mode: WeatherMode;
@@ -57,6 +58,7 @@ export function TopBar({
   const [customStart, setCustomStart] = useState(startDate);
   const [customEnd, setCustomEnd] = useState(endDate);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const dateMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setCustomStart(startDate);
@@ -64,12 +66,23 @@ export function TopBar({
   }, [startDate, endDate]);
 
   useEffect(() => {
+    if (!dateMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (dateMenuRef.current && !dateMenuRef.current.contains(e.target as Node)) {
+        setDateMenuOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [dateMenuOpen]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSearchOpen(true);
         setTimeout(() => searchInputRef.current?.focus(), 20);
-      } else if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+      } else if (e.key === '/' && !isEditableTarget(e.target)) {
         e.preventDefault();
         setSearchOpen(true);
         setTimeout(() => searchInputRef.current?.focus(), 20);
@@ -153,9 +166,8 @@ export function TopBar({
             </button>
           </div>
 
-          {/* Historical Date & Event Picker */}
           {mode === 'historical' && (
-            <div className="relative shrink-0">
+            <div ref={dateMenuRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setDateMenuOpen((v) => !v)}

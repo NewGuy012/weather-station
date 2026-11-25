@@ -35,13 +35,14 @@ import {
 } from '../utils/mapViewport';
 import {
   METRIC_SCALES,
+  type ResolvedStateSlice,
   interpolateColor,
   isColorLight,
   resolveMetricStops,
+  resolveMetricValue,
   resolveStateSlice,
 } from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
-import { WeatherIcon } from './WeatherIcon';
 import { geoPath } from 'd3-geo';
 
 interface MapCanvasProps {
@@ -101,10 +102,32 @@ export function MapCanvas({
 }: MapCanvasProps) {
   const geometries = useMemo(() => getUsStateGeometries(), []);
   const scaleConfig = METRIC_SCALES[metric];
+  const calmZero = metric === 'precipitation' || metric === 'windSpeed';
   const activeStops = useMemo(
     () => resolveMetricStops(metric, colormap, reverseColormap),
     [metric, colormap, reverseColormap],
   );
+  const stateVisuals = useMemo(() => {
+    const fallbackFill = isDark ? 'rgb(30, 41, 59)' : 'rgb(226, 232, 240)';
+    const byCode: Record<
+      string,
+      { slice: ResolvedStateSlice; displayVal: string; fill: string; lightFill: boolean }
+    > = {};
+    for (const item of geometries) {
+      const snap = states[item.meta.code];
+      if (!snap) continue;
+      const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
+      const rawMetric = resolveMetricValue(scaleConfig, snap.current, slice);
+      const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
+      byCode[item.meta.code] = {
+        slice,
+        displayVal: scaleConfig.formatMapValue(rawMetric, unit),
+        fill: fill || fallbackFill,
+        lightFill: isColorLight(fill),
+      };
+    }
+    return byCode;
+  }, [geometries, states, timelineIndex, useTimeline, scaleConfig, activeStops, unit, isDark, calmZero]);
 
   const [hovered, setHovered] = useState<{ code: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<MapViewState>(INITIAL_MAP_VIEW);
@@ -433,11 +456,9 @@ export function MapCanvas({
           const proj = usProjection([c.lon, c.lat]);
           if (!proj) return null;
           const slice = resolveStateSlice(c, timelineIndex, useTimeline);
-          const rawMetric = slice.metricSource
-            ? scaleConfig.extractTimeline(slice.metricSource, c.current)
-            : scaleConfig.extractCurrent(c.current);
+          const rawMetric = resolveMetricValue(scaleConfig, c.current, slice);
           const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
-          const fill = interpolateColor(rawMetric, activeStops, isDark);
+          const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
           const label = `${c.name} ${displayVal}`;
           const boxWidth = Math.max(76, Math.min(138, label.length * 5.6 + 22));
           return {
@@ -495,14 +516,15 @@ export function MapCanvas({
     useTimeline,
     scaleConfig,
     activeStops,
+    calmZero,
     unit,
     isDark,
     view.zoom,
   ]);
 
   const hoveredSnap = hovered ? states[hovered.code] : undefined;
-  const hoveredSlice = hoveredSnap ? resolveStateSlice(hoveredSnap, timelineIndex, useTimeline) : null;
-  const selectedSlice = selectedSnap ? resolveStateSlice(selectedSnap, timelineIndex, useTimeline) : null;
+  const hoveredVisual = hovered ? stateVisuals[hovered.code] : undefined;
+  const selectedVisual = selectedCode ? stateVisuals[selectedCode] : undefined;
   const canDrag = isPanActive || view.zoom > DEFAULT_ZOOM;
   const showReset = isViewModified(view);
   const canZoomIn = view.zoom < MAX_ZOOM;
@@ -574,15 +596,9 @@ export function MapCanvas({
           {/* 50 US State Choropleth Polygons */}
           <g>
             {geometries.map((item) => {
-              const snap = states[item.meta.code];
-              const slice = snap ? resolveStateSlice(snap, timelineIndex, useTimeline) : null;
-              const rawMetric =
-                snap && slice
-                  ? slice.metricSource
-                    ? scaleConfig.extractTimeline(slice.metricSource, snap.current)
-                    : scaleConfig.extractCurrent(snap.current)
-                  : null;
-              const fill = interpolateColor(rawMetric, activeStops, isDark);
+              const fill =
+                stateVisuals[item.meta.code]?.fill ??
+                (isDark ? 'rgb(30, 41, 59)' : 'rgb(226, 232, 240)');
               const isSelected = selectedCode === item.meta.code;
               const isHovered = hovered?.code === item.meta.code;
 
@@ -666,16 +682,10 @@ export function MapCanvas({
         >
           {geometries.map((item) => {
             if (detailedStateMode && item.meta.code === selectedCode) return null;
-            const snap = states[item.meta.code];
-            if (!snap) return null;
+            const visual = stateVisuals[item.meta.code];
+            if (!visual) return null;
 
-            const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-            const rawMetric = slice.metricSource
-              ? scaleConfig.extractTimeline(slice.metricSource, snap.current)
-              : scaleConfig.extractCurrent(snap.current);
-            const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
-            const fill = interpolateColor(rawMetric, activeStops, isDark);
-            const lightFill = isColorLight(fill);
+            const { displayVal, lightFill } = visual;
             const isCompact = Boolean(item.meta.labelOffset);
             const hasAlerts = (alertsByState[item.meta.code]?.length ?? 0) > 0;
             const isSelected = selectedCode === item.meta.code;
@@ -847,19 +857,10 @@ export function MapCanvas({
           })}
         </svg>
 
-        {/* Pinned tooltip shown when a state is clicked (hidden in Detailed State Mode) */}
-        {!detailedStateMode && selectedGeo && selectedSnap && selectedSlice && (
+        {!detailedStateMode && selectedGeo && selectedSnap && selectedVisual && (
           <PinnedStateTooltip
-            data={{
-              snapshot: selectedSnap,
-              tempF: selectedSlice.temperatureF,
-              apparentF: selectedSlice.apparentTemperatureF,
-              precipMm: selectedSlice.precipitationMm,
-              windMph: selectedSlice.windSpeedMph,
-              windDeg: selectedSlice.windDirectionDeg,
-              humidity: selectedSlice.humidity,
-              weatherCode: selectedSlice.weatherCode,
-            }}
+            snapshot={selectedSnap}
+            slice={selectedVisual.slice}
             unit={unit}
             svgX={selectedGeo.centroid[0]}
             svgY={selectedGeo.centroid[1]}
@@ -871,7 +872,6 @@ export function MapCanvas({
         )}
       </div>
 
-      {/* Detailed State Mode Prompt / Loading Pill */}
       {detailedStateMode && (!selectedCode || citiesLoading) && (
         <div
           className="no-print pointer-events-none fixed top-32 left-1/2 z-20 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-white/90 px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-md md:top-20 dark:border-emerald-400/30 dark:bg-slate-900/90 dark:text-slate-200"
@@ -882,19 +882,10 @@ export function MapCanvas({
         </div>
       )}
 
-      {/* Hover Tooltip */}
-      {!isDragging && hovered && hoveredSnap && hoveredSlice && hovered.code !== selectedCode && (
+      {!isDragging && hovered && hoveredSnap && hoveredVisual && hovered.code !== selectedCode && (
         <HoverTooltip
-          data={{
-            snapshot: hoveredSnap,
-            tempF: hoveredSlice.temperatureF,
-            apparentF: hoveredSlice.apparentTemperatureF,
-            precipMm: hoveredSlice.precipitationMm,
-            windMph: hoveredSlice.windSpeedMph,
-            windDeg: hoveredSlice.windDirectionDeg,
-            humidity: hoveredSlice.humidity,
-            weatherCode: hoveredSlice.weatherCode,
-          }}
+          snapshot={hoveredSnap}
+          slice={hoveredVisual.slice}
           unit={unit}
           x={hovered.x}
           y={hovered.y}
@@ -1021,11 +1012,6 @@ export function MapCanvas({
           </>
         )}
       </div>
-
-      {/* Unused import silence guard for future inline icon markers */}
-      <span className="hidden">
-        <WeatherIcon code={0} size={10} />
-      </span>
     </div>
   );
 }

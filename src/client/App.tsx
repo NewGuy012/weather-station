@@ -28,22 +28,48 @@ import { StateDrawer } from './components/StateDrawer';
 import { TopBar } from './components/TopBar';
 import { WindOverlay } from './components/WindOverlay';
 
+function readStorage(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures in restricted browsing contexts
+  }
+}
+
 function getInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'light';
-  const saved = window.localStorage.getItem('ws-theme');
+  const saved = readStorage('ws-theme');
   if (saved === 'dark' || saved === 'light') return saved;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
 }
 
 function getInitialColormap(): ColormapId {
-  if (typeof window === 'undefined') return 'default';
-  const saved = window.localStorage.getItem('ws-colormap') as ColormapId | null;
+  const saved = readStorage('ws-colormap') as ColormapId | null;
   return saved && saved in COLORMAP_BY_ID ? saved : 'default';
 }
 
-function getInitialReverseColormap(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem('ws-colormap-reverse') === '1';
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
+async function fetchApiJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Request failed (${res.status})`);
+  }
+  return (await res.json()) as T;
 }
 
 export function App() {
@@ -52,7 +78,7 @@ export function App() {
   const [unit, setUnit] = useState<TempUnit>('F');
   const [metric, setMetric] = useState<MetricLayer>('temperature');
   const [colormap, setColormap] = useState<ColormapId>(getInitialColormap);
-  const [reverseColormap, setReverseColormap] = useState<boolean>(getInitialReverseColormap);
+  const [reverseColormap, setReverseColormap] = useState(() => readStorage('ws-colormap-reverse') === '1');
 
   const [startDate, setStartDate] = useState(DEFAULT_HISTORICAL_PRESET.startDate);
   const [endDate, setEndDate] = useState(DEFAULT_HISTORICAL_PRESET.endDate);
@@ -77,16 +103,14 @@ export function App() {
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesError, setCitiesError] = useState<string | null>(null);
   const [citiesRefreshCount, setCitiesRefreshCount] = useState(0);
-  const lastHandledRefreshRef = useRef(0);
+  const refreshCitiesPendingRef = useRef(false);
 
-  // Broadcast timeline animation state
   const [timelineIndex, setTimelineIndex] = useState<number>(
     DEFAULT_HISTORICAL_PRESET.defaultFrameIndex ?? 30,
   );
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false);
   const [timelineSpeed, setTimelineSpeed] = useState<number>(1);
 
-  // Doppler radar & wind flow overlay state
   const [showRadar, setShowRadar] = useState(false);
   const [radarFrames, setRadarFrames] = useState<RadarFrame[]>([]);
   const [radarFrameIndex, setRadarFrameIndex] = useState(0);
@@ -99,32 +123,27 @@ export function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'national' | 'state'>('national');
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const datasetAbortRef = useRef<AbortController | null>(null);
 
   const selectedMeta = selectedCode ? STATE_BY_CODE[selectedCode] ?? null : null;
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    window.localStorage.setItem('ws-theme', theme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    writeStorage('ws-theme', theme);
   }, [theme]);
 
   useEffect(() => {
-    window.localStorage.setItem('ws-colormap', colormap);
+    writeStorage('ws-colormap', colormap);
   }, [colormap]);
 
   useEffect(() => {
-    window.localStorage.setItem('ws-colormap-reverse', reverseColormap ? '1' : '0');
+    writeStorage('ws-colormap-reverse', reverseColormap ? '1' : '0');
   }, [reverseColormap]);
 
   useEffect(() => {
     if (exportOpen) return;
     const handleColormapShortcut = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-      if (isEditableTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isEditableTarget(e.target)) return;
       if (e.key.toLowerCase() !== 'c') return;
       e.preventDefault();
       if (e.shiftKey) {
@@ -138,14 +157,13 @@ export function App() {
   }, [exportOpen]);
 
   useEffect(() => {
-    fetch('/api/meta')
-      .then((r) => r.json())
-      .then((data: { topCitiesByState?: Record<string, TopCityMeta[]> }) => {
-        if (data.topCitiesByState) {
-          setTopCitiesByState(data.topCitiesByState);
-        }
+    const controller = new AbortController();
+    fetchApiJson<{ topCitiesByState?: Record<string, TopCityMeta[]> }>('/api/meta', controller.signal)
+      .then((data) => {
+        if (data.topCitiesByState) setTopCitiesByState(data.topCitiesByState);
       })
       .catch(() => {});
+    return () => controller.abort();
   }, []);
 
   const loadDataset = useCallback(
@@ -157,6 +175,10 @@ export function App() {
       refresh?: boolean;
       defaultFrame?: number;
     }) => {
+      datasetAbortRef.current?.abort();
+      const controller = new AbortController();
+      datasetAbortRef.current = controller;
+
       setIsLoading(true);
       setErrorMsg(null);
       setIsTimelinePlaying(false);
@@ -169,12 +191,10 @@ export function App() {
         }
         if (opts.refresh) params.set('refresh', '1');
 
-        const res = await fetch(`/api/states?${params.toString()}`);
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(err.error ?? `Failed to load weather (${res.status})`);
-        }
-        const json = (await res.json()) as WeatherDatasetResponse;
+        const json = await fetchApiJson<WeatherDatasetResponse>(
+          `/api/states?${params.toString()}`,
+          controller.signal,
+        );
         setDataset(json);
 
         if (opts.targetMode === 'historical') {
@@ -184,21 +204,26 @@ export function App() {
           setTimelineIndex(Math.max(0, fallbackIdx));
         } else {
           setTimelineIndex(0);
-          fetch(`/api/alerts${opts.refresh ? '?refresh=1' : ''}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((a: AlertsResponse | null) => setAlertsData(a))
+          fetchApiJson<AlertsResponse>(
+            `/api/alerts${opts.refresh ? '?refresh=1' : ''}`,
+            controller.signal,
+          )
+            .then(setAlertsData)
             .catch(() => {});
         }
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : 'Unable to load weather dataset');
+        if (!isAbortError(err)) {
+          setErrorMsg(err instanceof Error ? err.message : 'Unable to load weather dataset');
+        }
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
       }
     },
     [],
   );
 
-  // Initial boot in Historical Mode
   useEffect(() => {
     void loadDataset({
       targetMode: 'historical',
@@ -207,56 +232,49 @@ export function App() {
       presetId: DEFAULT_HISTORICAL_PRESET.id,
       defaultFrame: DEFAULT_HISTORICAL_PRESET.defaultFrameIndex,
     });
+    return () => datasetAbortRef.current?.abort();
   }, [loadDataset]);
 
-  // Weather front broadcast playback timer
   useEffect(() => {
     if (!isTimelinePlaying || !dataset?.timelineHours.length) return;
     const total = dataset.timelineHours.length;
-    const intervalMs = Math.round(520 / timelineSpeed);
     const id = window.setInterval(() => {
       setTimelineIndex((prev) => (prev + 1) % total);
-    }, intervalMs);
+    }, Math.round(520 / timelineSpeed));
     return () => window.clearInterval(id);
   }, [isTimelinePlaying, dataset, timelineSpeed]);
 
-  // Fetch Doppler radar frames when Radar layer is active
+  // Bucket historical radar anchor to 6h intervals to avoid refetching on every 1h frame step
   const radarAnchor = useMemo(() => {
     if (mode === 'live') return 'live';
     const ts = dataset?.timelineHours[timelineIndex];
-    // Re-anchor radar frames per timeline day/6h bucket to avoid excessive refetch during playback
-    return ts ? ts.slice(0, 13) + ':00:00Z' : `${startDate}T18:00:00Z`;
+    if (!ts) return `${startDate}T18:00:00Z`;
+    const bucketHour = Math.floor(Number(ts.slice(11, 13)) / 6) * 6;
+    return `${ts.slice(0, 11)}${String(bucketHour).padStart(2, '0')}:00:00Z`;
   }, [mode, dataset, timelineIndex, startDate]);
 
   useEffect(() => {
     if (!showRadar) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setRadarLoading(true);
     const params = new URLSearchParams({ mode });
-    if (mode === 'historical') {
-      params.set('anchor', radarAnchor);
-    }
+    if (mode === 'historical') params.set('anchor', radarAnchor);
 
-    fetch(`/api/radar/frames?${params.toString()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((res: RadarFramesResponse) => {
-        if (cancelled) return;
+    fetchApiJson<RadarFramesResponse>(`/api/radar/frames?${params.toString()}`, controller.signal)
+      .then((res) => {
         setRadarFrames(res.frames);
         setRadarFrameIndex(Math.max(0, res.frames.length - 1));
       })
-      .catch(() => {
-        if (!cancelled) setRadarFrames([]);
+      .catch((err) => {
+        if (!isAbortError(err)) setRadarFrames([]);
       })
       .finally(() => {
-        if (!cancelled) setRadarLoading(false);
+        if (!controller.signal.aborted) setRadarLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [showRadar, mode, radarAnchor]);
 
-  // Doppler radar animation loop
   useEffect(() => {
     if (!showRadar || !isRadarPlaying || radarFrames.length < 2) return;
     const id = window.setInterval(() => {
@@ -277,7 +295,7 @@ export function App() {
 
   useEffect(() => {
     if (!selectedCode) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setDetailLoading(true);
     const params = new URLSearchParams({ mode });
     if (selectedCity) params.set('city', selectedCity);
@@ -286,21 +304,19 @@ export function App() {
       params.set('endDate', endDate);
     }
 
-    fetch(`/api/state/${selectedCode}?${params.toString()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d: StateDetailResponse) => {
-        if (!cancelled) setStateDetail(d);
-      })
-      .catch(() => {
-        if (!cancelled) setStateDetail(null);
+    fetchApiJson<StateDetailResponse>(
+      `/api/state/${selectedCode}?${params.toString()}`,
+      controller.signal,
+    )
+      .then(setStateDetail)
+      .catch((err) => {
+        if (!isAbortError(err)) setStateDetail(null);
       })
       .finally(() => {
-        if (!cancelled) setDetailLoading(false);
+        if (!controller.signal.aborted) setDetailLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [selectedCode, selectedCity, mode, startDate, endDate]);
 
   useEffect(() => {
@@ -311,11 +327,9 @@ export function App() {
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setCitiesLoading(true);
     setCitiesError(null);
-    const shouldRefresh = citiesRefreshCount > lastHandledRefreshRef.current;
-    lastHandledRefreshRef.current = citiesRefreshCount;
 
     const params = new URLSearchParams({ mode });
     if (mode === 'historical') {
@@ -323,34 +337,31 @@ export function App() {
       params.set('startDate', startDate);
       params.set('endDate', endDate);
     }
-    if (shouldRefresh) params.set('refresh', '1');
+    if (refreshCitiesPendingRef.current) {
+      params.set('refresh', '1');
+    }
 
-    fetch(`/api/state/${selectedCode}/cities?${params.toString()}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const err = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(err.error ?? `Failed to load cities (${r.status})`);
-        }
-        return (await r.json()) as StateCitiesWeatherResponse;
-      })
+    fetchApiJson<StateCitiesWeatherResponse>(
+      `/api/state/${selectedCode}/cities?${params.toString()}`,
+      controller.signal,
+    )
       .then((res) => {
-        if (!cancelled) setStateCitiesWeather(res);
+        refreshCitiesPendingRef.current = false;
+        setStateCitiesWeather(res);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setStateCitiesWeather(null);
-          setCitiesError(
-            err instanceof Error ? err.message : 'Unable to load top 10 cities weather',
-          );
-        }
+        if (isAbortError(err)) return;
+        refreshCitiesPendingRef.current = false;
+        setStateCitiesWeather(null);
+        setCitiesError(
+          err instanceof Error ? err.message : 'Unable to load top 10 cities weather',
+        );
       })
       .finally(() => {
-        if (!cancelled) setCitiesLoading(false);
+        if (!controller.signal.aborted) setCitiesLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [detailedStateMode, selectedCode, mode, startDate, endDate, activePresetId, citiesRefreshCount]);
 
   const handleToggleDetailedStateMode = useCallback(() => {
@@ -432,7 +443,10 @@ export function App() {
         statesMeta={US_STATES}
         onSelectState={(code) => handleSelectState(code)}
         onRefresh={() => {
-          setCitiesRefreshCount((c) => c + 1);
+          if (detailedStateMode && selectedCode) {
+            refreshCitiesPendingRef.current = true;
+            setCitiesRefreshCount((c) => c + 1);
+          }
           void loadDataset({ targetMode: mode, start: startDate, end: endDate, refresh: true });
         }}
         onOpenExport={() => {
@@ -449,7 +463,6 @@ export function App() {
         </div>
       )}
 
-      {/* Extremes pill positioned cleanly top-right below header when drawer is closed */}
       {dataset && !selectedCode && (
         <div className="pointer-events-none fixed top-20 right-4 z-20">
           <ExtremesBar

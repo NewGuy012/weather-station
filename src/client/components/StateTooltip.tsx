@@ -2,21 +2,12 @@ import { AlertTriangle, Droplets, MapPin, Wind, X } from 'lucide-react';
 import type { StateWeatherSnapshot, TempUnit, WeatherAlert } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
+import type { ResolvedStateSlice } from '../utils/scales';
 import { WeatherIcon } from './WeatherIcon';
 
-interface TooltipData {
-  snapshot: StateWeatherSnapshot;
-  tempF: number;
-  apparentF: number;
-  precipMm: number;
-  windMph: number;
-  windDeg: number;
-  humidity: number;
-  weatherCode: number;
-}
-
 interface HoverTooltipProps {
-  data: TooltipData;
+  snapshot: StateWeatherSnapshot;
+  slice: ResolvedStateSlice;
   unit: TempUnit;
   x: number;
   y: number;
@@ -25,21 +16,20 @@ interface HoverTooltipProps {
 }
 
 export function HoverTooltip({
-  data,
+  snapshot,
+  slice,
   unit,
   x,
   y,
   alerts = [],
   panActive = false,
 }: HoverTooltipProps) {
-  const wmo = getWmoInfo(data.weatherCode);
+  const wmo = getWmoInfo(slice.weatherCode);
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
 
-  const flipX = x > vw - 260;
-  const flipY = y > vh - 190;
-  const left = flipX ? x - 236 : x + 16;
-  const top = flipY ? y - 160 : y + 16;
+  const left = x > vw - 260 ? x - 236 : x + 16;
+  const top = y > vh - 190 ? y - 160 : y + 16;
 
   return (
     <div
@@ -50,18 +40,18 @@ export function HoverTooltip({
         <div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold tracking-wide text-slate-900 dark:text-slate-100">
-              {data.snapshot.name}
+              {snapshot.name}
             </span>
             <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-              {data.snapshot.code}
+              {snapshot.code}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">{data.snapshot.city}</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">{snapshot.city}</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={data.weatherCode} size={18} />
+          <WeatherIcon code={slice.weatherCode} size={18} />
           <span className="tabular-nums text-lg font-semibold text-slate-900 dark:text-white">
-            {formatTemp(data.tempF, unit)}
+            {formatTemp(slice.temperatureF, unit)}
           </span>
         </div>
       </div>
@@ -69,7 +59,7 @@ export function HoverTooltip({
       <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-[11px] text-slate-600 dark:border-slate-800 dark:text-slate-300">
         <span>{wmo.shortLabel}</span>
         <span className="tabular-nums text-slate-500 dark:text-slate-400">
-          Feels {formatTemp(data.apparentF, unit)}
+          Feels {formatTemp(slice.apparentTemperatureF, unit)}
         </span>
       </div>
 
@@ -77,14 +67,14 @@ export function HoverTooltip({
         <div className="flex items-center gap-1">
           <Wind size={11} />
           <span className="tabular-nums">
-            {formatWind(data.windMph, unit, false)} {degToCompass(data.windDeg)}
+            {formatWind(slice.windSpeedMph, unit, false)} {degToCompass(slice.windDirectionDeg)}
           </span>
         </div>
         <div className="flex items-center gap-1">
           <Droplets size={11} />
-          <span className="tabular-nums">{Math.round(data.humidity)}%</span>
+          <span className="tabular-nums">{Math.round(slice.humidity)}%</span>
         </div>
-        <div className="text-right tabular-nums">{formatPrecip(data.precipMm, unit)}</div>
+        <div className="text-right tabular-nums">{formatPrecip(slice.precipitationMm, unit)}</div>
       </div>
 
       {alerts.length > 0 && (
@@ -102,7 +92,8 @@ export function HoverTooltip({
 }
 
 interface PinnedStateTooltipProps {
-  data: TooltipData;
+  snapshot: StateWeatherSnapshot;
+  slice: ResolvedStateSlice;
   unit: TempUnit;
   svgX: number;
   svgY: number;
@@ -113,7 +104,8 @@ interface PinnedStateTooltipProps {
 }
 
 export function PinnedStateTooltip({
-  data,
+  snapshot,
+  slice,
   unit,
   svgX,
   svgY,
@@ -122,7 +114,7 @@ export function PinnedStateTooltip({
   alerts = [],
   onClose,
 }: PinnedStateTooltipProps) {
-  const wmo = getWmoInfo(data.weatherCode);
+  const wmo = getWmoInfo(slice.weatherCode);
   const leftPct = (svgX / mapWidth) * 100;
   const topPct = (svgY / mapHeight) * 100;
   const placeLeft = leftPct > 65;
@@ -145,7 +137,7 @@ export function PinnedStateTooltip({
         <div className="flex items-center gap-1.5">
           <MapPin size={12} className="shrink-0 text-sky-500" />
           <span className="text-xs font-semibold text-slate-900 dark:text-white">
-            {data.snapshot.name}
+            {snapshot.name}
           </span>
         </div>
         <button
@@ -160,18 +152,18 @@ export function PinnedStateTooltip({
 
       <div className="mt-1 flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={data.weatherCode} size={16} />
+          <WeatherIcon code={slice.weatherCode} size={16} />
           <span className="tabular-nums text-base font-bold text-slate-900 dark:text-white">
-            {formatTemp(data.tempF, unit, true)}
+            {formatTemp(slice.temperatureF, unit, true)}
           </span>
         </div>
         <span className="text-[11px] text-slate-500 dark:text-slate-400">{wmo.shortLabel}</span>
       </div>
 
       <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-        <span>{data.snapshot.city}</span>
+        <span>{snapshot.city}</span>
         <span className="tabular-nums">
-          {formatWind(data.windMph, unit)} {degToCompass(data.windDeg)}
+          {formatWind(slice.windSpeedMph, unit)} {degToCompass(slice.windDirectionDeg)}
         </span>
       </div>
 
