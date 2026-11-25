@@ -1,7 +1,9 @@
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
 import type {
   AlertsResponse,
+  HistoricalPreset,
   RadarFramesResponse,
+  StateCitiesWeatherResponse,
   StateDetailResponse,
   WeatherDatasetResponse,
   WeatherMode,
@@ -9,8 +11,14 @@ import type {
 import { WeatherCache } from './cache';
 import seedHistorical from './data/seedHistorical.json';
 import { STATE_BY_CODE, US_STATES } from './data/states';
+import { TOP_CITIES_BY_STATE } from './data/topCities';
 import { fetchActiveNwsAlerts } from './providers/nws';
-import { fetchAllStatesHistorical, fetchAllStatesLive, fetchStateDetail } from './providers/openMeteo';
+import {
+  fetchAllStatesHistorical,
+  fetchAllStatesLive,
+  fetchStateDetail,
+  fetchStateTopCitiesWeather,
+} from './providers/openMeteo';
 import {
   buildHistoricalRadarFrames,
   fetchLiveRadarFrames,
@@ -30,6 +38,47 @@ function isValidIsoDate(value: string | null): value is string {
 
 function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
+}
+
+function resolveHistoricalRange(url: URL):
+  | {
+      ok: true;
+      startDate: string;
+      endDate: string;
+      preset?: HistoricalPreset;
+    }
+  | { ok: false; error: Response } {
+  const presetId = url.searchParams.get('preset');
+  const preset = HISTORICAL_PRESETS.find((p) => p.id === presetId);
+  const startParam = url.searchParams.get('startDate');
+  const endParam = url.searchParams.get('endDate');
+
+  const startDate = preset
+    ? preset.startDate
+    : isValidIsoDate(startParam)
+      ? startParam
+      : DEFAULT_HISTORICAL_PRESET.startDate;
+  const endDate = preset
+    ? preset.endDate
+    : isValidIsoDate(endParam)
+      ? endParam
+      : isValidIsoDate(startParam)
+        ? startParam
+        : DEFAULT_HISTORICAL_PRESET.endDate;
+
+  if (startDate > endDate) {
+    return { ok: false, error: jsonError(400, 'startDate must be before or equal to endDate') };
+  }
+
+  // Cap arbitrary custom date ranges at 10 days to keep response sizes lean
+  const daySpan = Math.round(
+    (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000,
+  );
+  if (daySpan > 10) {
+    return { ok: false, error: jsonError(400, 'Historical range cannot exceed 10 days') };
+  }
+
+  return { ok: true, startDate, endDate, preset };
 }
 
 export async function getCachedAlerts(
@@ -67,6 +116,7 @@ export async function handleApiRequest(
     if (path === '/api/meta') {
       return Response.json({
         states: US_STATES,
+        topCitiesByState: TOP_CITIES_BY_STATE,
         presets: HISTORICAL_PRESETS,
         defaultMode: 'historical',
         defaultPresetId: DEFAULT_HISTORICAL_PRESET.id,
@@ -98,35 +148,9 @@ export async function handleApiRequest(
       }
 
       // Historical mode
-      const presetId = url.searchParams.get('preset');
-      const preset = HISTORICAL_PRESETS.find((p) => p.id === presetId);
-      const startParam = url.searchParams.get('startDate');
-      const endParam = url.searchParams.get('endDate');
-
-      const startDate = preset
-        ? preset.startDate
-        : isValidIsoDate(startParam)
-          ? startParam
-          : DEFAULT_HISTORICAL_PRESET.startDate;
-      const endDate = preset
-        ? preset.endDate
-        : isValidIsoDate(endParam)
-          ? endParam
-          : isValidIsoDate(startParam)
-            ? startParam
-            : DEFAULT_HISTORICAL_PRESET.endDate;
-
-      if (startDate > endDate) {
-        return jsonError(400, 'startDate must be before or equal to endDate');
-      }
-
-      // Cap arbitrary custom date ranges at 10 days to keep response sizes lean
-      const daySpan = Math.round(
-        (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000,
-      );
-      if (daySpan > 10) {
-        return jsonError(400, 'Historical range cannot exceed 10 days');
-      }
+      const range = resolveHistoricalRange(url);
+      if (!range.ok) return range.error;
+      const { startDate, endDate, preset } = range;
 
       const isDefaultRange =
         startDate === DEFAULT_HISTORICAL_PRESET.startDate &&
@@ -159,17 +183,50 @@ export async function handleApiRequest(
     }
 
     if (path.startsWith('/api/state/')) {
-      const code = path.slice('/api/state/'.length).trim().toUpperCase();
+      const segments = path.slice('/api/state/'.length).split('/').filter(Boolean);
+      const code = (segments[0] ?? '').trim().toUpperCase();
       const meta = STATE_BY_CODE[code];
-      if (!meta) {
-        return jsonError(404, `Unknown state code: ${code}`);
+      if (!meta || segments.length > 2) {
+        return jsonError(404, `Unknown state endpoint: ${path}`);
       }
 
       const mode: WeatherMode = url.searchParams.get('mode') === 'live' ? 'live' : 'historical';
+      const forceRefresh = url.searchParams.get('refresh') === '1';
+
+      if (segments.length === 2) {
+        if (segments[1] !== 'cities') {
+          return jsonError(404, `Unknown state endpoint: ${path}`);
+        }
+
+        const range = mode === 'historical' ? resolveHistoricalRange(url) : null;
+        if (range && !range.ok) return range.error;
+
+        const cacheKey =
+          mode === 'live'
+            ? `live:cities:${code}`
+            : `hist:cities:${code}:${range!.startDate}:${range!.endDate}`;
+
+        if (!forceRefresh) {
+          const hit = cache.getJson<StateCitiesWeatherResponse>(cacheKey);
+          if (hit) {
+            return Response.json({ ...hit.value, cached: true });
+          }
+        }
+
+        const citiesWeather = await fetchStateTopCitiesWeather({
+          code,
+          mode,
+          startDate: range?.ok ? range.startDate : undefined,
+          endDate: range?.ok ? range.endDate : undefined,
+          defaultFrameIndex: range?.ok ? range.preset?.defaultFrameIndex : undefined,
+        });
+        cache.setJson(cacheKey, citiesWeather, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
+        return Response.json(citiesWeather);
+      }
+
       const city = url.searchParams.get('city') ?? meta.primaryCity;
       const startDate = url.searchParams.get('startDate') ?? DEFAULT_HISTORICAL_PRESET.startDate;
       const endDate = url.searchParams.get('endDate') ?? DEFAULT_HISTORICAL_PRESET.endDate;
-      const forceRefresh = url.searchParams.get('refresh') === '1';
 
       const cacheKey =
         mode === 'live'

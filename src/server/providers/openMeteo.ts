@@ -1,12 +1,16 @@
 import { US_STATES, STATE_BY_CODE } from '../data/states';
+import { TOP_CITIES_BY_STATE } from '../data/topCities';
 import type {
+  CityWeatherSnapshot,
   DailyPoint,
   HourlyPoint,
+  StateCitiesWeatherResponse,
   StateCurrentMetrics,
   StateDetailResponse,
   StateMeta,
   StateWeatherSnapshot,
   TimelinePoint,
+  TopCityMeta,
   WeatherDatasetResponse,
   WeatherMode,
 } from '../../shared/types';
@@ -112,6 +116,153 @@ export function normalizeArrayPayload<T>(raw: T | T[]): T[] {
   return Array.isArray(raw) ? raw : [raw];
 }
 
+function resolveTimelineGrid(locations: OpenMeteoLocationPayload[]): {
+  stride: number;
+  timelineHours: string[];
+} {
+  const firstHourlyTimes = locations[0]?.hourly?.time ?? [];
+  const stride = computeTimelineStride(firstHourlyTimes.length);
+  const timelineHours: string[] = [];
+  for (let i = 0; i < firstHourlyTimes.length; i += stride) {
+    const t = firstHourlyTimes[i];
+    if (t) timelineHours.push(ensureUtcIso(t));
+  }
+  return { stride, timelineHours };
+}
+
+function extractLocationSnapshot(
+  loc: OpenMeteoLocationPayload,
+  aq: OpenMeteoAirQualityPayload | null,
+  stride: number,
+  opts: { mode: WeatherMode; defaultFrameIndex?: number },
+): { timezone: string; current: StateCurrentMetrics; timeline: TimelinePoint[] } {
+  const hourly = loc.hourly;
+  const daily = loc.daily;
+  const times = hourly?.time ?? [];
+
+  const timeline: TimelinePoint[] = [];
+  for (let h = 0; h < times.length; h += stride) {
+    const t = times[h];
+    if (!t) continue;
+    timeline.push({
+      time: ensureUtcIso(t),
+      temperatureF: num(hourly?.temperature_2m?.[h]),
+      apparentTemperatureF: num(hourly?.apparent_temperature?.[h], num(hourly?.temperature_2m?.[h])),
+      precipitationMm: num(hourly?.precipitation?.[h]),
+      windSpeedMph: num(hourly?.wind_speed_10m?.[h]),
+      windDirectionDeg: num(hourly?.wind_direction_10m?.[h]),
+      humidity: num(hourly?.relative_humidity_2m?.[h], 50),
+      weatherCode: num(hourly?.weather_code?.[h], 0),
+    });
+  }
+
+  // Choose representative snapshot metrics:
+  // In live mode, prefer `loc.current`. In historical mode, pick midpoint/default frame.
+  const fallbackFrameIdx = Math.min(
+    Math.max(0, opts.defaultFrameIndex ?? Math.floor(timeline.length / 2)),
+    Math.max(0, timeline.length - 1),
+  );
+  const rep = timeline[fallbackFrameIdx];
+  const repHourIdx = Math.min(fallbackFrameIdx * stride, Math.max(0, times.length - 1));
+
+  const currentTemp =
+    opts.mode === 'live' && loc.current
+      ? num(loc.current.temperature_2m)
+      : rep?.temperatureF ?? 60;
+  const currentRh =
+    opts.mode === 'live' && loc.current
+      ? num(loc.current.relative_humidity_2m, 50)
+      : rep?.humidity ?? 50;
+  const currentApparent =
+    opts.mode === 'live' && loc.current
+      ? num(loc.current.apparent_temperature, currentTemp)
+      : rep?.apparentTemperatureF ?? currentTemp;
+
+  const aqMidIdx = aq?.hourly?.time
+    ? Math.min(repHourIdx, Math.max(0, aq.hourly.time.length - 1))
+    : 0;
+
+  const usAqi =
+    opts.mode === 'live'
+      ? optNum(aq?.current?.us_aqi)
+      : optNum(aq?.hourly?.us_aqi?.[aqMidIdx]);
+  const pm25 =
+    opts.mode === 'live'
+      ? optNum(aq?.current?.pm2_5)
+      : optNum(aq?.hourly?.pm2_5?.[aqMidIdx]);
+  const uvIndex =
+    opts.mode === 'live'
+      ? optNum(aq?.current?.uv_index) ?? optNum(daily?.uv_index_max?.[0])
+      : optNum(aq?.hourly?.uv_index?.[aqMidIdx]) ?? optNum(daily?.uv_index_max?.[0]);
+
+  const dailyHighs = (daily?.temperature_2m_max ?? []).filter((v): v is number => typeof v === 'number');
+  const dailyLows = (daily?.temperature_2m_min ?? []).filter((v): v is number => typeof v === 'number');
+  const tempHighF =
+    opts.mode === 'live'
+      ? num(daily?.temperature_2m_max?.[0], currentTemp)
+      : dailyHighs.length > 0
+        ? Math.max(...dailyHighs)
+        : currentTemp;
+  const tempLowF =
+    opts.mode === 'live'
+      ? num(daily?.temperature_2m_min?.[0], currentTemp)
+      : dailyLows.length > 0
+        ? Math.min(...dailyLows)
+        : currentTemp;
+
+  const current: StateCurrentMetrics = {
+    temperatureF: currentTemp,
+    apparentTemperatureF: currentApparent,
+    humidity: currentRh,
+    dewPointF:
+      opts.mode === 'live' && loc.current?.dew_point_2m !== undefined
+        ? num(loc.current.dew_point_2m, estimateDewPointF(currentTemp, currentRh))
+        : num(hourly?.dew_point_2m?.[repHourIdx], estimateDewPointF(currentTemp, currentRh)),
+    precipitationMm:
+      opts.mode === 'live' && loc.current
+        ? num(loc.current.precipitation)
+        : rep?.precipitationMm ?? 0,
+    precipitationProb: optNum(hourly?.precipitation_probability?.[repHourIdx]),
+    windSpeedMph:
+      opts.mode === 'live' && loc.current
+        ? num(loc.current.wind_speed_10m)
+        : rep?.windSpeedMph ?? 0,
+    windGustMph:
+      opts.mode === 'live' && loc.current
+        ? optNum(loc.current.wind_gusts_10m)
+        : optNum(hourly?.wind_gusts_10m?.[repHourIdx]),
+    windDirectionDeg:
+      opts.mode === 'live' && loc.current
+        ? num(loc.current.wind_direction_10m)
+        : rep?.windDirectionDeg ?? 0,
+    pressureHpa:
+      opts.mode === 'live' && loc.current
+        ? optNum(loc.current.surface_pressure)
+        : optNum(hourly?.surface_pressure?.[repHourIdx]),
+    cloudCoverPct:
+      opts.mode === 'live' && loc.current
+        ? optNum(loc.current.cloud_cover)
+        : optNum(hourly?.cloud_cover?.[repHourIdx]),
+    weatherCode:
+      opts.mode === 'live' && loc.current
+        ? num(loc.current.weather_code, 0)
+        : rep?.weatherCode ?? 0,
+    uvIndex,
+    usAqi,
+    pm25,
+    tempHighF,
+    tempLowF,
+    sunrise: daily?.sunrise?.[0] ?? undefined,
+    sunset: daily?.sunset?.[0] ?? undefined,
+  };
+
+  return {
+    timezone: loc.timezone ?? 'UTC',
+    current,
+    timeline,
+  };
+}
+
 export function buildBatchDataset(
   locations: OpenMeteoLocationPayload[],
   aqLocations: (OpenMeteoAirQualityPayload | null)[],
@@ -126,14 +277,7 @@ export function buildBatchDataset(
     defaultFrameIndex?: number;
   },
 ): WeatherDatasetResponse {
-  const firstHourlyTimes = locations[0]?.hourly?.time ?? [];
-  const stride = computeTimelineStride(firstHourlyTimes.length);
-  const timelineHours: string[] = [];
-  for (let i = 0; i < firstHourlyTimes.length; i += stride) {
-    const t = firstHourlyTimes[i];
-    if (t) timelineHours.push(ensureUtcIso(t));
-  }
-
+  const { stride, timelineHours } = resolveTimelineGrid(locations);
   const states: Record<string, StateWeatherSnapshot> = {};
 
   for (let idx = 0; idx < statesList.length; idx++) {
@@ -141,136 +285,16 @@ export function buildBatchDataset(
     const loc = locations[idx];
     if (!meta || !loc) continue;
 
-    const aq = aqLocations[idx] ?? null;
-    const hourly = loc.hourly;
-    const daily = loc.daily;
-    const times = hourly?.time ?? [];
-
-    const timeline: TimelinePoint[] = [];
-    for (let h = 0; h < times.length; h += stride) {
-      const t = times[h];
-      if (!t) continue;
-      timeline.push({
-        time: ensureUtcIso(t),
-        temperatureF: num(hourly?.temperature_2m?.[h]),
-        apparentTemperatureF: num(hourly?.apparent_temperature?.[h], num(hourly?.temperature_2m?.[h])),
-        precipitationMm: num(hourly?.precipitation?.[h]),
-        windSpeedMph: num(hourly?.wind_speed_10m?.[h]),
-        windDirectionDeg: num(hourly?.wind_direction_10m?.[h]),
-        humidity: num(hourly?.relative_humidity_2m?.[h], 50),
-        weatherCode: num(hourly?.weather_code?.[h], 0),
-      });
-    }
-
-    // Choose representative snapshot metrics:
-    // In live mode, prefer `loc.current`. In historical mode, pick midpoint/default frame.
-    const fallbackFrameIdx = Math.min(
-      Math.max(0, opts.defaultFrameIndex ?? Math.floor(timeline.length / 2)),
-      Math.max(0, timeline.length - 1),
-    );
-    const rep = timeline[fallbackFrameIdx];
-    const repHourIdx = Math.min(fallbackFrameIdx * stride, Math.max(0, times.length - 1));
-
-    const currentTemp =
-      opts.mode === 'live' && loc.current
-        ? num(loc.current.temperature_2m)
-        : rep?.temperatureF ?? 60;
-    const currentRh =
-      opts.mode === 'live' && loc.current
-        ? num(loc.current.relative_humidity_2m, 50)
-        : rep?.humidity ?? 50;
-    const currentApparent =
-      opts.mode === 'live' && loc.current
-        ? num(loc.current.apparent_temperature, currentTemp)
-        : rep?.apparentTemperatureF ?? currentTemp;
-
-    const aqMidIdx = aq?.hourly?.time
-      ? Math.min(repHourIdx, Math.max(0, aq.hourly.time.length - 1))
-      : 0;
-
-    const usAqi =
-      opts.mode === 'live'
-        ? optNum(aq?.current?.us_aqi)
-        : optNum(aq?.hourly?.us_aqi?.[aqMidIdx]);
-    const pm25 =
-      opts.mode === 'live'
-        ? optNum(aq?.current?.pm2_5)
-        : optNum(aq?.hourly?.pm2_5?.[aqMidIdx]);
-    const uvIndex =
-      opts.mode === 'live'
-        ? optNum(aq?.current?.uv_index) ?? optNum(daily?.uv_index_max?.[0])
-        : optNum(aq?.hourly?.uv_index?.[aqMidIdx]) ?? optNum(daily?.uv_index_max?.[0]);
-
-    const dailyHighs = (daily?.temperature_2m_max ?? []).filter((v): v is number => typeof v === 'number');
-    const dailyLows = (daily?.temperature_2m_min ?? []).filter((v): v is number => typeof v === 'number');
-    const tempHighF =
-      opts.mode === 'live'
-        ? num(daily?.temperature_2m_max?.[0], currentTemp)
-        : dailyHighs.length > 0
-          ? Math.max(...dailyHighs)
-          : currentTemp;
-    const tempLowF =
-      opts.mode === 'live'
-        ? num(daily?.temperature_2m_min?.[0], currentTemp)
-        : dailyLows.length > 0
-          ? Math.min(...dailyLows)
-          : currentTemp;
-
-    const current: StateCurrentMetrics = {
-      temperatureF: currentTemp,
-      apparentTemperatureF: currentApparent,
-      humidity: currentRh,
-      dewPointF:
-        opts.mode === 'live' && loc.current?.dew_point_2m !== undefined
-          ? num(loc.current.dew_point_2m, estimateDewPointF(currentTemp, currentRh))
-          : num(hourly?.dew_point_2m?.[repHourIdx], estimateDewPointF(currentTemp, currentRh)),
-      precipitationMm:
-        opts.mode === 'live' && loc.current
-          ? num(loc.current.precipitation)
-          : rep?.precipitationMm ?? 0,
-      precipitationProb: optNum(hourly?.precipitation_probability?.[repHourIdx]),
-      windSpeedMph:
-        opts.mode === 'live' && loc.current
-          ? num(loc.current.wind_speed_10m)
-          : rep?.windSpeedMph ?? 0,
-      windGustMph:
-        opts.mode === 'live' && loc.current
-          ? optNum(loc.current.wind_gusts_10m)
-          : optNum(hourly?.wind_gusts_10m?.[repHourIdx]),
-      windDirectionDeg:
-        opts.mode === 'live' && loc.current
-          ? num(loc.current.wind_direction_10m)
-          : rep?.windDirectionDeg ?? 0,
-      pressureHpa:
-        opts.mode === 'live' && loc.current
-          ? optNum(loc.current.surface_pressure)
-          : optNum(hourly?.surface_pressure?.[repHourIdx]),
-      cloudCoverPct:
-        opts.mode === 'live' && loc.current
-          ? optNum(loc.current.cloud_cover)
-          : optNum(hourly?.cloud_cover?.[repHourIdx]),
-      weatherCode:
-        opts.mode === 'live' && loc.current
-          ? num(loc.current.weather_code, 0)
-          : rep?.weatherCode ?? 0,
-      uvIndex,
-      usAqi,
-      pm25,
-      tempHighF,
-      tempLowF,
-      sunrise: daily?.sunrise?.[0] ?? undefined,
-      sunset: daily?.sunset?.[0] ?? undefined,
-    };
-
+    const extracted = extractLocationSnapshot(loc, aqLocations[idx] ?? null, stride, opts);
     states[meta.code] = {
       code: meta.code,
       name: meta.name,
       city: meta.primaryCity,
       lat: meta.lat,
       lon: meta.lon,
-      timezone: loc.timezone ?? 'UTC',
-      current,
-      timeline,
+      timezone: extracted.timezone,
+      current: extracted.current,
+      timeline: extracted.timeline,
     };
   }
 
@@ -285,6 +309,52 @@ export function buildBatchDataset(
     presetLabel: opts.presetLabel,
     timelineHours,
     states,
+  };
+}
+
+export function buildCityBatchDataset(
+  locations: OpenMeteoLocationPayload[],
+  aqLocations: (OpenMeteoAirQualityPayload | null)[],
+  citiesList: TopCityMeta[],
+  stateMeta: Pick<StateMeta, 'code' | 'name'>,
+  opts: {
+    mode: WeatherMode;
+    startDate: string;
+    endDate: string;
+    defaultFrameIndex?: number;
+  },
+): StateCitiesWeatherResponse {
+  const { stride, timelineHours } = resolveTimelineGrid(locations);
+  const cities: CityWeatherSnapshot[] = [];
+
+  for (let idx = 0; idx < citiesList.length; idx++) {
+    const city = citiesList[idx];
+    const loc = locations[idx];
+    if (!city || !loc) continue;
+
+    const extracted = extractLocationSnapshot(loc, aqLocations[idx] ?? null, stride, opts);
+    cities.push({
+      rank: city.rank,
+      name: city.name,
+      population: city.population,
+      lat: city.lat,
+      lon: city.lon,
+      timezone: extracted.timezone,
+      current: extracted.current,
+      timeline: extracted.timeline,
+    });
+  }
+
+  return {
+    mode: opts.mode,
+    code: stateMeta.code,
+    name: stateMeta.name,
+    cached: false,
+    fetchedAt: new Date().toISOString(),
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    timelineHours,
+    cities,
   };
 }
 
@@ -313,103 +383,103 @@ async function fetchJson<T>(url: string, timeoutMs = 18_000): Promise<T> {
   }
 }
 
-export async function fetchAllStatesLive(): Promise<WeatherDatasetResponse> {
-  const lats = US_STATES.map((s) => s.lat.toFixed(2)).join(',');
-  const lons = US_STATES.map((s) => s.lon.toFixed(2)).join(',');
-
-  const forecastParams = new URLSearchParams({
-    latitude: lats,
-    longitude: lons,
-    current: [
-      'temperature_2m',
-      'relative_humidity_2m',
-      'apparent_temperature',
-      'precipitation',
-      'weather_code',
-      'cloud_cover',
-      'surface_pressure',
-      'wind_speed_10m',
-      'wind_direction_10m',
-      'wind_gusts_10m',
-    ].join(','),
-    hourly: [
-      'temperature_2m',
-      'apparent_temperature',
-      'relative_humidity_2m',
-      'dew_point_2m',
-      'precipitation',
-      'precipitation_probability',
-      'weather_code',
-      'wind_speed_10m',
-      'wind_direction_10m',
-      'wind_gusts_10m',
-      'surface_pressure',
-      'cloud_cover',
-    ].join(','),
-    daily: [
-      'temperature_2m_max',
-      'temperature_2m_min',
-      'precipitation_sum',
-      'uv_index_max',
-      'weather_code',
-      'sunrise',
-      'sunset',
-    ].join(','),
-    forecast_days: '3',
-    temperature_unit: 'fahrenheit',
-    wind_speed_unit: 'mph',
-    timezone: 'UTC',
-  });
-
-  const aqParams = new URLSearchParams({
-    latitude: lats,
-    longitude: lons,
-    current: 'us_aqi,pm2_5,uv_index',
-    timezone: 'UTC',
-  });
-
-  const [forecastRaw, aqResult] = await Promise.all([
-    fetchJson<OpenMeteoLocationPayload | OpenMeteoLocationPayload[]>(
-      `${FORECAST_BASE}?${forecastParams.toString()}`,
-    ),
-    fetchJson<OpenMeteoAirQualityPayload | OpenMeteoAirQualityPayload[]>(
-      `${AIR_QUALITY_BASE}?${aqParams.toString()}`,
-    ).catch(() => null),
-  ]);
-
-  const locations = normalizeArrayPayload(forecastRaw);
-  const aqLocations: (OpenMeteoAirQualityPayload | null)[] = aqResult
-    ? normalizeArrayPayload(aqResult)
-    : US_STATES.map(() => null);
-
-  const today = isoDateDaysAgo(0);
-  const twoDaysAhead = isoDateDaysAgo(-2);
-
-  return buildBatchDataset(locations, aqLocations, US_STATES, {
-    mode: 'live',
-    source: 'open-meteo-forecast',
-    startDate: today,
-    endDate: twoDaysAhead,
-  });
-}
-
-export async function fetchAllStatesHistorical(opts: {
+async function fetchBatchedWeatherAndAq(
+  coords: Array<{ lat: number; lon: number }>,
+  opts: {
+    mode: WeatherMode;
+    startDate?: string;
+    endDate?: string;
+    precision?: number;
+  },
+): Promise<{
+  locations: OpenMeteoLocationPayload[];
+  aqLocations: (OpenMeteoAirQualityPayload | null)[];
   startDate: string;
   endDate: string;
-  presetId?: string;
-  presetLabel?: string;
-  defaultFrameIndex?: number;
-}): Promise<WeatherDatasetResponse> {
-  const lats = US_STATES.map((s) => s.lat.toFixed(2)).join(',');
-  const lons = US_STATES.map((s) => s.lon.toFixed(2)).join(',');
-  const useArchive = shouldUseArchiveEndpoint(opts.endDate);
+}> {
+  const precision = opts.precision ?? 2;
+  const lats = coords.map((c) => c.lat.toFixed(precision)).join(',');
+  const lons = coords.map((c) => c.lon.toFixed(precision)).join(',');
+
+  if (opts.mode === 'live') {
+    const forecastParams = new URLSearchParams({
+      latitude: lats,
+      longitude: lons,
+      current: [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'apparent_temperature',
+        'precipitation',
+        'weather_code',
+        'cloud_cover',
+        'surface_pressure',
+        'wind_speed_10m',
+        'wind_direction_10m',
+        'wind_gusts_10m',
+      ].join(','),
+      hourly: [
+        'temperature_2m',
+        'apparent_temperature',
+        'relative_humidity_2m',
+        'dew_point_2m',
+        'precipitation',
+        'precipitation_probability',
+        'weather_code',
+        'wind_speed_10m',
+        'wind_direction_10m',
+        'wind_gusts_10m',
+        'surface_pressure',
+        'cloud_cover',
+      ].join(','),
+      daily: [
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'precipitation_sum',
+        'uv_index_max',
+        'weather_code',
+        'sunrise',
+        'sunset',
+      ].join(','),
+      forecast_days: '3',
+      temperature_unit: 'fahrenheit',
+      wind_speed_unit: 'mph',
+      timezone: 'UTC',
+    });
+
+    const aqParams = new URLSearchParams({
+      latitude: lats,
+      longitude: lons,
+      current: 'us_aqi,pm2_5,uv_index',
+      timezone: 'UTC',
+    });
+
+    const [forecastRaw, aqResult] = await Promise.all([
+      fetchJson<OpenMeteoLocationPayload | OpenMeteoLocationPayload[]>(
+        `${FORECAST_BASE}?${forecastParams.toString()}`,
+      ),
+      fetchJson<OpenMeteoAirQualityPayload | OpenMeteoAirQualityPayload[]>(
+        `${AIR_QUALITY_BASE}?${aqParams.toString()}`,
+      ).catch(() => null),
+    ]);
+
+    return {
+      locations: normalizeArrayPayload(forecastRaw),
+      aqLocations: aqResult ? normalizeArrayPayload(aqResult) : coords.map(() => null),
+      startDate: isoDateDaysAgo(0),
+      endDate: isoDateDaysAgo(-2),
+    };
+  }
+
+  const startDate = opts.startDate ?? isoDateDaysAgo(5);
+  const endDate = opts.endDate ?? isoDateDaysAgo(1);
+  const useArchive = shouldUseArchiveEndpoint(endDate);
   const baseUrl = useArchive ? ARCHIVE_BASE : FORECAST_BASE;
 
   const params = new URLSearchParams({
     latitude: lats,
     longitude: lons,
-    start_date: opts.startDate,
-    end_date: opts.endDate,
+    start_date: startDate,
+    end_date: endDate,
     hourly: [
       'temperature_2m',
       'apparent_temperature',
@@ -439,12 +509,12 @@ export async function fetchAllStatesHistorical(opts: {
   });
 
   // Air quality archive only spans recent years (~2022-08 onward)
-  const canQueryAq = opts.startDate >= '2022-08-01';
+  const canQueryAq = startDate >= '2022-08-01';
   const aqParams = new URLSearchParams({
     latitude: lats,
     longitude: lons,
-    start_date: opts.startDate,
-    end_date: opts.endDate,
+    start_date: startDate,
+    end_date: endDate,
     hourly: 'us_aqi,pm2_5,uv_index',
     timezone: 'UTC',
   });
@@ -462,18 +532,84 @@ export async function fetchAllStatesHistorical(opts: {
       : Promise.resolve(null),
   ]);
 
-  const locations = normalizeArrayPayload(weatherRaw);
-  const aqLocations: (OpenMeteoAirQualityPayload | null)[] = aqResult
-    ? normalizeArrayPayload(aqResult)
-    : US_STATES.map(() => null);
+  return {
+    locations: normalizeArrayPayload(weatherRaw),
+    aqLocations: aqResult ? normalizeArrayPayload(aqResult) : coords.map(() => null),
+    startDate,
+    endDate,
+  };
+}
+
+export async function fetchAllStatesLive(): Promise<WeatherDatasetResponse> {
+  const { locations, aqLocations, startDate, endDate } = await fetchBatchedWeatherAndAq(
+    US_STATES,
+    { mode: 'live', precision: 2 },
+  );
+
+  return buildBatchDataset(locations, aqLocations, US_STATES, {
+    mode: 'live',
+    source: 'open-meteo-forecast',
+    startDate,
+    endDate,
+  });
+}
+
+export async function fetchAllStatesHistorical(opts: {
+  startDate: string;
+  endDate: string;
+  presetId?: string;
+  presetLabel?: string;
+  defaultFrameIndex?: number;
+}): Promise<WeatherDatasetResponse> {
+  const { locations, aqLocations, startDate, endDate } = await fetchBatchedWeatherAndAq(
+    US_STATES,
+    {
+      mode: 'historical',
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+      precision: 2,
+    },
+  );
 
   return buildBatchDataset(locations, aqLocations, US_STATES, {
     mode: 'historical',
     source: 'open-meteo-archive',
-    startDate: opts.startDate,
-    endDate: opts.endDate,
+    startDate,
+    endDate,
     presetId: opts.presetId,
     presetLabel: opts.presetLabel,
+    defaultFrameIndex: opts.defaultFrameIndex,
+  });
+}
+
+export async function fetchStateTopCitiesWeather(opts: {
+  code: string;
+  mode: WeatherMode;
+  startDate?: string;
+  endDate?: string;
+  defaultFrameIndex?: number;
+}): Promise<StateCitiesWeatherResponse> {
+  const upperCode = opts.code.toUpperCase();
+  const meta = STATE_BY_CODE[upperCode];
+  const citiesList = TOP_CITIES_BY_STATE[upperCode];
+  if (!meta || !citiesList?.length) {
+    throw new Error(`Unknown state code: ${opts.code}`);
+  }
+
+  const { locations, aqLocations, startDate, endDate } = await fetchBatchedWeatherAndAq(
+    citiesList,
+    {
+      mode: opts.mode,
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+      precision: 4,
+    },
+  );
+
+  return buildCityBatchDataset(locations, aqLocations, citiesList, meta, {
+    mode: opts.mode,
+    startDate,
+    endDate,
     defaultFrameIndex: opts.defaultFrameIndex,
   });
 }
@@ -485,13 +621,16 @@ export async function fetchStateDetail(opts: {
   startDate?: string;
   endDate?: string;
 }): Promise<StateDetailResponse> {
-  const meta = STATE_BY_CODE[opts.code.toUpperCase()];
+  const upperCode = opts.code.toUpperCase();
+  const meta = STATE_BY_CODE[upperCode];
   if (!meta) {
     throw new Error(`Unknown state code: ${opts.code}`);
   }
 
+  const topCities = TOP_CITIES_BY_STATE[upperCode] ?? [];
   const cityObj =
     meta.cities.find((c) => c.name.toLowerCase() === opts.cityName?.toLowerCase()) ??
+    topCities.find((c) => c.name.toLowerCase() === opts.cityName?.toLowerCase()) ??
     meta.cities[0]!;
 
   const isHistorical = opts.mode === 'historical' && opts.startDate && opts.endDate;

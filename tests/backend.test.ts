@@ -7,7 +7,12 @@ import { WeatherCache } from '../src/server/cache';
 import { US_STATES } from '../src/server/data/states';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
-import { buildBatchDataset, computeTimelineStride, ensureUtcIso } from '../src/server/providers/openMeteo';
+import {
+  buildBatchDataset,
+  buildCityBatchDataset,
+  computeTimelineStride,
+  ensureUtcIso,
+} from '../src/server/providers/openMeteo';
 import { buildHistoricalRadarFrames, parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
 import { degToCompass, fToC, formatTemp } from '../src/shared/units';
 import { getWmoInfo } from '../src/shared/wmoCodes';
@@ -143,6 +148,85 @@ describe('Open-Meteo Parsers & Helpers', () => {
     expect(dataset.states.AL?.current.temperatureF).toBe(62);
     expect(dataset.states.AK?.current.usAqi).toBe(20);
     expect(dataset.states.AK?.timeline[2]?.weatherCode).toBe(71);
+  });
+
+  test('builds city batch dataset for top 10 cities in a state', () => {
+    const caCities = (TOP_CITIES_BY_STATE.CA ?? []).slice(0, 2);
+    const result = buildCityBatchDataset(
+      [
+        {
+          latitude: 34.05,
+          longitude: -118.24,
+          timezone: 'GMT',
+          current: {
+            time: '2026-11-24T12:00',
+            temperature_2m: 72,
+            relative_humidity_2m: 45,
+            apparent_temperature: 71,
+            precipitation: 0,
+            weather_code: 1,
+            wind_speed_10m: 6,
+            wind_direction_10m: 260,
+          },
+          hourly: {
+            time: ['2026-11-24T12:00'],
+            temperature_2m: [72],
+            relative_humidity_2m: [45],
+            precipitation: [0],
+            wind_speed_10m: [6],
+            wind_direction_10m: [260],
+            weather_code: [1],
+          },
+          daily: {
+            time: ['2026-11-24'],
+            temperature_2m_max: [76],
+            temperature_2m_min: [58],
+          },
+        },
+        {
+          latitude: 32.72,
+          longitude: -117.16,
+          timezone: 'GMT',
+          current: {
+            time: '2026-11-24T12:00',
+            temperature_2m: 69,
+            relative_humidity_2m: 60,
+            apparent_temperature: 69,
+            precipitation: 0,
+            weather_code: 2,
+            wind_speed_10m: 9,
+            wind_direction_10m: 280,
+          },
+          hourly: {
+            time: ['2026-11-24T12:00'],
+            temperature_2m: [69],
+            relative_humidity_2m: [60],
+            precipitation: [0],
+            wind_speed_10m: [9],
+            wind_direction_10m: [280],
+            weather_code: [2],
+          },
+          daily: {
+            time: ['2026-11-24'],
+            temperature_2m_max: [72],
+            temperature_2m_min: [59],
+          },
+        },
+      ],
+      [{ current: { us_aqi: 44, pm2_5: 9.2, uv_index: 4 } }, null],
+      caCities,
+      { code: 'CA', name: 'California' },
+      { mode: 'live', startDate: '2026-11-24', endDate: '2026-11-26' },
+    );
+
+    expect(result.code).toBe('CA');
+    expect(result.cities).toHaveLength(2);
+    expect(result.cities[0]?.name).toBe('Los Angeles');
+    expect(result.cities[0]?.rank).toBe(1);
+    expect(result.cities[0]?.current.temperatureF).toBe(72);
+    expect(result.cities[0]?.current.usAqi).toBe(44);
+    expect(result.cities[1]?.name).toBe('San Diego');
+    expect(result.cities[1]?.current.windSpeedMph).toBe(9);
   });
 });
 

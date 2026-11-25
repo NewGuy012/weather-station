@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { handleApiRequest } from '../src/server/api';
 import { WeatherCache } from '../src/server/cache';
-import type { WeatherDatasetResponse } from '../src/shared/types';
+import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
 
 describe('API Router', () => {
   test('serves health, meta, and default historical seed dataset with 50 states', async () => {
@@ -12,8 +12,14 @@ describe('API Router', () => {
 
     const metaRes = await handleApiRequest(new Request('http://localhost/api/meta'), cache);
     expect(metaRes?.status).toBe(200);
-    const metaJson = (await metaRes?.json()) as { states: unknown[]; defaultMode: string };
+    const metaJson = (await metaRes?.json()) as {
+      states: unknown[];
+      topCitiesByState: Record<string, unknown[]>;
+      defaultMode: string;
+    };
     expect(metaJson.states).toHaveLength(50);
+    expect(Object.keys(metaJson.topCitiesByState)).toHaveLength(50);
+    expect(metaJson.topCitiesByState.CA).toHaveLength(10);
     expect(metaJson.defaultMode).toBe('historical');
 
     const statesRes = await handleApiRequest(new Request('http://localhost/api/states'), cache);
@@ -61,6 +67,45 @@ describe('API Router', () => {
     expect(histFrames?.status).toBe(200);
     const framesBody = (await histFrames?.json()) as { frames: unknown[] };
     expect(framesBody.frames).toHaveLength(12);
+
+    const unknownCitiesState = await handleApiRequest(
+      new Request('http://localhost/api/state/ZZ/cities'),
+      cache,
+    );
+    expect(unknownCitiesState?.status).toBe(404);
+
+    const unknownSubpath = await handleApiRequest(
+      new Request('http://localhost/api/state/CA/unknown'),
+      cache,
+    );
+    expect(unknownSubpath?.status).toBe(404);
+
+    const badCitiesRange = await handleApiRequest(
+      new Request('http://localhost/api/state/CA/cities?mode=historical&startDate=2024-02-10&endDate=2024-02-01'),
+      cache,
+    );
+    expect(badCitiesRange?.status).toBe(400);
+
+    const cachedCitiesPayload: StateCitiesWeatherResponse = {
+      mode: 'live',
+      code: 'CA',
+      name: 'California',
+      cached: false,
+      fetchedAt: '2026-11-24T12:00:00Z',
+      startDate: '2026-11-24',
+      endDate: '2026-11-26',
+      timelineHours: ['2026-11-24T12:00Z'],
+      cities: [],
+    };
+    cache.setJson('live:cities:CA', cachedCitiesPayload, 60_000);
+    const cachedCitiesRes = await handleApiRequest(
+      new Request('http://localhost/api/state/CA/cities?mode=live'),
+      cache,
+    );
+    expect(cachedCitiesRes?.status).toBe(200);
+    const cachedCitiesJson = (await cachedCitiesRes?.json()) as StateCitiesWeatherResponse;
+    expect(cachedCitiesJson.cached).toBe(true);
+    expect(cachedCitiesJson.code).toBe('CA');
 
     cache.close();
   });
