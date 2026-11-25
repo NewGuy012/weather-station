@@ -14,7 +14,7 @@ import type {
   WeatherMode,
 } from '../../shared/types';
 import { fToC } from '../../shared/units';
-import { TOP_CITIES_BY_STATE } from '../data/topCities';
+import { TOP_CITIES_BY_STATE, findStateCity } from '../../shared/topCities';
 
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
 const ARCHIVE_BASE = 'https://archive-api.open-meteo.com/v1/archive';
@@ -623,11 +623,7 @@ export async function fetchStateDetail(opts: {
     throw new Error(`Unknown state code: ${opts.code}`);
   }
 
-  const topCities = TOP_CITIES_BY_STATE[upperCode] ?? [];
-  const cityObj =
-    meta.cities.find((c) => c.name.toLowerCase() === opts.cityName?.toLowerCase()) ??
-    topCities.find((c) => c.name.toLowerCase() === opts.cityName?.toLowerCase()) ??
-    meta.cities[0]!;
+  const cityObj = findStateCity(upperCode, opts.cityName) ?? meta.cities[0]!;
 
   const isHistorical = opts.mode === 'historical' && Boolean(opts.startDate && opts.endDate);
   const useArchive = isHistorical && shouldUseArchiveEndpoint(opts.endDate!);

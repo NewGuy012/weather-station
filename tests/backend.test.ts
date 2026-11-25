@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { type GeoPermissibleObjects, geoContains } from 'd3-geo';
 import { getUsStateFeatures } from '../src/client/utils/mapGeometry';
-import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
+import { TOP_CITIES_BY_STATE } from '../src/shared/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
 import {
   type OpenMeteoLocationPayload,

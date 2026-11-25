@@ -14,16 +14,7 @@ describe('API Router & Security', () => {
     expect(healthRes?.headers.get('X-Content-Type-Options')).toBe('nosniff');
 
     const metaRes = await handleApiRequest(new Request('http://localhost/api/meta'), cache);
-    const metaJson = (await metaRes?.json()) as {
-      states: unknown[];
-      topCitiesByState: Record<string, unknown[]>;
-      defaultMode: string;
-    };
-    expect(metaRes?.status).toBe(200);
-    expect(metaJson.states).toHaveLength(50);
-    expect(Object.keys(metaJson.topCitiesByState)).toHaveLength(50);
-    expect(metaJson.topCitiesByState.CA).toHaveLength(10);
-    expect(metaJson.defaultMode).toBe('historical');
+    expect(metaRes?.status).toBe(404);
 
     const statesRes = await handleApiRequest(new Request('http://localhost/api/states'), cache);
     const data = (await statesRes?.json()) as WeatherDatasetResponse;

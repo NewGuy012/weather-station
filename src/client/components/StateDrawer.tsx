@@ -15,6 +15,7 @@ import {
   X,
 } from './Icons';
 import { Fragment, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { TOP_CITIES_BY_STATE } from '../../shared/topCities';
 import type {
   MetricLayer,
   StateCitiesWeatherResponse,
@@ -22,7 +23,6 @@ import type {
   StateMeta,
   StateWeatherSnapshot,
   TempUnit,
-  TopCityMeta,
   WeatherMode,
 } from '../../shared/types';
 import {
@@ -63,7 +63,6 @@ interface StateDrawerProps {
   citiesWeather?: StateCitiesWeatherResponse | null;
   citiesLoading?: boolean;
   citiesError?: string | null;
-  fallbackTopCities?: TopCityMeta[];
 }
 
 function formatPopulation(pop: number): string {
@@ -180,7 +179,6 @@ export function StateDrawer({
   citiesWeather = null,
   citiesLoading = false,
   citiesError = null,
-  fallbackTopCities = [],
 }: StateDrawerProps) {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
   const [localTop10Open, setLocalTop10Open] = useState(detailedStateMode);
@@ -221,6 +219,7 @@ export function StateDrawer({
     return timePart || iso;
   };
 
+  const fallbackTopCities = TOP_CITIES_BY_STATE[meta.code] ?? [];
   const cityOptions = useMemo(() => {
     const baseCities =
       detailedStateMode && citiesWeather?.code === meta.code
@@ -629,16 +628,7 @@ export function StateDrawer({
               </div>
             ) : (
               <div className="space-y-1">
-                {(fallbackTopCities.length > 0
-                  ? fallbackTopCities
-                  : Array.from({ length: 10 }, (_, idx) => ({
-                      rank: idx + 1,
-                      name: `City ${idx + 1}`,
-                      population: 0,
-                      lat: 0,
-                      lon: 0,
-                    }))
-                ).map((c) => (
+                {fallbackTopCities.map((c) => (
                   <div
                     key={c.rank}
                     className="flex items-center justify-between rounded-lg bg-white/60 px-2.5 py-1.5 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400"

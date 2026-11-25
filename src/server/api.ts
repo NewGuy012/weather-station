@@ -1,6 +1,7 @@
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
 import { RADAR_BBOX_4326, type RadarRegion } from '../shared/radar';
-import { STATE_BY_CODE, US_STATES } from '../shared/states';
+import { STATE_BY_CODE } from '../shared/states';
+import { findStateCity } from '../shared/topCities';
 import type {
   AlertsResponse,
   HistoricalPreset,
@@ -12,7 +13,6 @@ import type {
 } from '../shared/types';
 import type { WeatherCacheStore } from '../worker/cache';
 import seedHistorical from './data/seedHistorical.json';
-import { TOP_CITIES_BY_STATE } from './data/topCities';
 import { fetchActiveNwsAlerts } from './providers/nws';
 import {
   fetchAllStatesHistorical,
@@ -61,14 +61,7 @@ function isValidUtcTimestamp(value: string | null): value is string {
 }
 
 function resolveKnownStateCity(code: string, cityParam: string | null): string | null {
-  const meta = STATE_BY_CODE[code];
-  if (!meta) return null;
-  if (!cityParam) return meta.primaryCity;
-  const lower = cityParam.trim().toLowerCase();
-  const match =
-    meta.cities.find((c) => c.name.toLowerCase() === lower) ??
-    TOP_CITIES_BY_STATE[code]?.find((c) => c.name.toLowerCase() === lower);
-  return match ? match.name : null;
+  return findStateCity(code, cityParam)?.name ?? null;
 }
 
 function resolveHistoricalRange(url: URL):
@@ -169,16 +162,6 @@ export async function handleApiRequest(
         ok: true,
         cache: cache.stats(),
         timestamp: new Date().toISOString(),
-      });
-    }
-
-    if (path === '/api/meta') {
-      return jsonResponse({
-        states: US_STATES,
-        topCitiesByState: TOP_CITIES_BY_STATE,
-        presets: HISTORICAL_PRESETS,
-        defaultMode: 'historical',
-        defaultPresetId: DEFAULT_HISTORICAL_PRESET.id,
       });
     }
 

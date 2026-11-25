@@ -11,7 +11,6 @@ import type {
   StateDetailResponse,
   TempUnit,
   ThemeMode,
-  TopCityMeta,
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
@@ -92,7 +91,6 @@ export function App() {
   );
 
   const [dataset, setDataset] = useState<WeatherDatasetResponse | null>(null);
-  const [topCitiesByState, setTopCitiesByState] = useState<Record<string, TopCityMeta[]>>({});
   const [alertsData, setAlertsData] = useState<AlertsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -165,16 +163,6 @@ export function App() {
     window.addEventListener('keydown', handleColormapShortcut);
     return () => window.removeEventListener('keydown', handleColormapShortcut);
   }, [exportOpen]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchApiJson<{ topCitiesByState?: Record<string, TopCityMeta[]> }>('/api/meta', controller.signal)
-      .then((data) => {
-        if (data.topCitiesByState) setTopCitiesByState(data.topCitiesByState);
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, []);
 
   const loadDataset = useCallback(
     async (opts: {
@@ -522,7 +510,6 @@ export function App() {
             detailedStateMode={detailedStateMode}
             onToggleDetailedStateMode={handleToggleDetailedStateMode}
             stateCitiesWeather={stateCitiesWeather}
-            fallbackTopCities={selectedCode ? topCitiesByState[selectedCode] ?? [] : []}
             citiesLoading={citiesLoading}
             selectedCity={selectedCity || selectedMeta?.primaryCity || ''}
             onSelectCity={setSelectedCity}
@@ -601,7 +588,6 @@ export function App() {
           citiesWeather={stateCitiesWeather}
           citiesLoading={citiesLoading}
           citiesError={citiesError}
-          fallbackTopCities={topCitiesByState[selectedCode] ?? []}
         />
       )}
 

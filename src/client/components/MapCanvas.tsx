@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TOP_CITIES_BY_STATE } from '../../shared/topCities';
 import type {
   ColormapId,
   GeoJsonFeatureCollection,
@@ -6,7 +7,6 @@ import type {
   StateCitiesWeatherResponse,
   StateWeatherSnapshot,
   TempUnit,
-  TopCityMeta,
   WeatherAlert,
 } from '../../shared/types';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usPathGen, usProjection } from '../utils/mapGeometry';
@@ -68,7 +68,6 @@ interface MapCanvasProps {
   detailedStateMode?: boolean;
   onToggleDetailedStateMode?: () => void;
   stateCitiesWeather?: StateCitiesWeatherResponse | null;
-  fallbackTopCities?: TopCityMeta[];
   citiesLoading?: boolean;
   selectedCity?: string;
   onSelectCity?: (cityName: string) => void;
@@ -106,7 +105,6 @@ export function MapCanvas({
   detailedStateMode = false,
   onToggleDetailedStateMode,
   stateCitiesWeather = null,
-  fallbackTopCities = [],
   citiesLoading = false,
   selectedCity = '',
   onSelectCity,
@@ -545,7 +543,7 @@ export function MapCanvas({
             loaded: true,
           };
         })
-      : fallbackTopCities.map((c) => {
+      : (TOP_CITIES_BY_STATE[selectedCode] ?? []).map((c) => {
           const proj = usProjection([c.lon, c.lat]);
           if (!proj) return null;
           const boxWidth = Math.max(66, Math.min(120, c.name.length * 5.6 + 18));
@@ -582,7 +580,6 @@ export function MapCanvas({
     detailedStateMode,
     selectedCode,
     stateCitiesWeather,
-    fallbackTopCities,
     timelineIndex,
     useTimeline,
     scaleConfig,

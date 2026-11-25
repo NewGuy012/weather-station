@@ -36,7 +36,7 @@ import {
   stopsToCssGradient,
 } from '../src/client/utils/scales';
 import seedHistorical from '../src/server/data/seedHistorical.json';
-import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
+import { TOP_CITIES_BY_STATE } from '../src/shared/topCities';
 import { STATE_BY_CODE, US_STATES } from '../src/shared/states';
 import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
 
