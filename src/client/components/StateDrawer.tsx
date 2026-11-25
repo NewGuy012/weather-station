@@ -117,22 +117,22 @@ export function StateDrawer({
   return (
     <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] dark:border-slate-700/70 dark:bg-slate-900/95">
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-        <div>
+      <div className="flex items-start justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{meta.name}</h2>
-            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <h2 className="truncate text-base font-semibold text-slate-900 dark:text-white">{meta.name}</h2>
+            <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {meta.code}
             </span>
-            <span className="text-[11px] text-slate-400">{meta.region}</span>
+            <span className="shrink-0 text-[11px] text-slate-400">{meta.region}</span>
           </div>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
             {detail?.city ?? snapshot.city}
             {detail ? ` • Elev ${detail.elevationM}m • ${detail.timezone}` : ''}
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {onToggleDetailedStateMode && (
             <button
               type="button"
@@ -143,7 +143,7 @@ export function StateDrawer({
                   ? 'Exit Detailed State Mode (D)'
                   : 'Zoom in & load top 10 populated cities (D)'
               }
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+              className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition ${
                 detailedStateMode
                   ? 'bg-emerald-600 text-white'
                   : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -157,7 +157,7 @@ export function StateDrawer({
             type="button"
             onClick={() => onToggleCompare(meta.code)}
             title={isComparing ? 'Remove from comparison' : 'Compare state'}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition ${
               isComparing
                 ? 'bg-sky-600 text-white'
                 : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
