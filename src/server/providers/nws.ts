@@ -134,22 +134,16 @@ export function parseNwsAlerts(raw: NwsResponse): AlertsResponse {
 }
 
 export async function fetchActiveNwsAlerts(): Promise<AlertsResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(NWS_ALERTS_URL, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'application/geo+json',
-      },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`NWS API HTTP ${res.status}`);
-    }
-    const json = (await res.json()) as NwsResponse;
-    return parseNwsAlerts(json);
-  } finally {
-    clearTimeout(timer);
+  const res = await fetch(NWS_ALERTS_URL, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'application/geo+json',
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    throw new Error(`NWS API HTTP ${res.status}`);
   }
+  const json = (await res.json()) as NwsResponse;
+  return parseNwsAlerts(json);
 }

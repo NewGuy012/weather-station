@@ -1,4 +1,6 @@
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
+import { RADAR_BBOX_4326, type RadarRegion } from '../shared/radar';
+import { STATE_BY_CODE, US_STATES } from '../shared/states';
 import type {
   AlertsResponse,
   HistoricalPreset,
@@ -10,8 +12,6 @@ import type {
 } from '../shared/types';
 import type { WeatherCacheStore } from '../worker/cache';
 import seedHistorical from './data/seedHistorical.json';
-import { STATE_BY_CODE, US_STATES } from '../shared/states';
-import { RADAR_BBOX_4326, type RadarRegion } from '../shared/radar';
 import { TOP_CITIES_BY_STATE } from './data/topCities';
 import { fetchActiveNwsAlerts } from './providers/nws';
 import {
@@ -31,13 +31,44 @@ const LIVE_DETAIL_TTL_MS = 15 * 60_000;
 const ALERTS_TTL_MS = 5 * 60_000;
 const RADAR_FRAMES_TTL_MS = 3 * 60_000;
 const LIVE_RADAR_IMAGE_TTL_MS = 10 * 60_000;
+const LIVE_REFRESH_COOLDOWN_MS = 60_000;
+const MIN_ARCHIVE_DATE = '1940-01-01';
 
-function isValidIsoDate(value: string | null): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const inFlight = new Map<string, Promise<unknown>>();
+
+function jsonResponse(data: unknown, status = 200, extraHeaders?: HeadersInit): Response {
+  const headers = new Headers(extraHeaders);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  return Response.json(data, { status, headers });
 }
 
-function jsonError(status: number, message: string): Response {
-  return Response.json({ error: message }, { status });
+function jsonError(status: number, message: string, extraHeaders?: HeadersInit): Response {
+  return jsonResponse({ error: message }, status, extraHeaders);
+}
+
+function isValidIsoDate(value: string | null): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (value < MIN_ARCHIVE_DATE) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const dt = new Date(Date.UTC(y!, m! - 1, d!));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m! - 1 && dt.getUTCDate() === d;
+}
+
+function isValidUtcTimestamp(value: string | null): value is string {
+  if (typeof value !== 'string') return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z$/.test(value)) return false;
+  return !Number.isNaN(Date.parse(value));
+}
+
+function resolveKnownStateCity(code: string, cityParam: string | null): string | null {
+  const meta = STATE_BY_CODE[code];
+  if (!meta) return null;
+  if (!cityParam) return meta.primaryCity;
+  const lower = cityParam.trim().toLowerCase();
+  const match =
+    meta.cities.find((c) => c.name.toLowerCase() === lower) ??
+    TOP_CITIES_BY_STATE[code]?.find((c) => c.name.toLowerCase() === lower);
+  return match ? match.name : null;
 }
 
 function resolveHistoricalRange(url: URL):
@@ -53,24 +84,23 @@ function resolveHistoricalRange(url: URL):
   const startParam = url.searchParams.get('startDate');
   const endParam = url.searchParams.get('endDate');
 
-  const startDate = preset
-    ? preset.startDate
-    : isValidIsoDate(startParam)
-      ? startParam
-      : DEFAULT_HISTORICAL_PRESET.startDate;
-  const endDate = preset
-    ? preset.endDate
-    : isValidIsoDate(endParam)
-      ? endParam
-      : isValidIsoDate(startParam)
-        ? startParam
-        : DEFAULT_HISTORICAL_PRESET.endDate;
+  if (!preset) {
+    if (startParam !== null && !isValidIsoDate(startParam)) {
+      return { ok: false, error: jsonError(400, 'Invalid startDate (expected YYYY-MM-DD >= 1940-01-01)') };
+    }
+    if (endParam !== null && !isValidIsoDate(endParam)) {
+      return { ok: false, error: jsonError(400, 'Invalid endDate (expected YYYY-MM-DD >= 1940-01-01)') };
+    }
+  }
+
+  const startDate = preset ? preset.startDate : startParam ?? DEFAULT_HISTORICAL_PRESET.startDate;
+  const endDate = preset ? preset.endDate : endParam ?? startParam ?? DEFAULT_HISTORICAL_PRESET.endDate;
 
   if (startDate > endDate) {
     return { ok: false, error: jsonError(400, 'startDate must be before or equal to endDate') };
   }
 
-  // Cap arbitrary custom date ranges at 10 days to keep response sizes lean
+  // Cap custom ranges at 10 days to keep Open-Meteo payloads lean
   const daySpan = Math.round(
     (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000,
   );
@@ -81,20 +111,41 @@ function resolveHistoricalRange(url: URL):
   return { ok: true, startDate, endDate, preset };
 }
 
+function coalesce<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = fn().finally(() => {
+    inFlight.delete(key);
+  });
+  inFlight.set(key, promise);
+  return promise;
+}
+
+async function cachedJson<T extends { cached?: boolean }>(
+  cache: WeatherCacheStore,
+  key: string,
+  ttlMs: number | null,
+  fetcher: () => Promise<T>,
+  forceRefresh = false,
+): Promise<T> {
+  const allowRefresh = forceRefresh && ttlMs !== null;
+  const hit = await cache.getJson<T>(key);
+  if (hit && (!allowRefresh || Date.now() - hit.createdAt < LIVE_REFRESH_COOLDOWN_MS)) {
+    return { ...hit.value, cached: true };
+  }
+
+  return coalesce(key, async () => {
+    const fresh = await fetcher();
+    await cache.setJson(key, fresh, ttlMs);
+    return fresh;
+  });
+}
+
 export async function getCachedAlerts(
   cache: WeatherCacheStore,
   forceRefresh = false,
 ): Promise<AlertsResponse> {
-  const key = 'live:alerts';
-  if (!forceRefresh) {
-    const hit = await cache.getJson<AlertsResponse>(key);
-    if (hit) {
-      return { ...hit.value, cached: true };
-    }
-  }
-  const fresh = await fetchActiveNwsAlerts();
-  await cache.setJson(key, fresh, ALERTS_TTL_MS);
-  return fresh;
+  return cachedJson(cache, 'live:alerts', ALERTS_TTL_MS, fetchActiveNwsAlerts, forceRefresh);
 }
 
 export async function handleApiRequest(
@@ -108,17 +159,21 @@ export async function handleApiRequest(
     return null;
   }
 
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return jsonError(405, 'Method not allowed', { Allow: 'GET, HEAD' });
+  }
+
   try {
     if (path === '/api/health') {
-      return Response.json({
+      return jsonResponse({
         ok: true,
-        cache: await cache.stats(),
+        cache: cache.stats(),
         timestamp: new Date().toISOString(),
       });
     }
 
     if (path === '/api/meta') {
-      return Response.json({
+      return jsonResponse({
         states: US_STATES,
         topCitiesByState: TOP_CITIES_BY_STATE,
         presets: HISTORICAL_PRESETS,
@@ -128,56 +183,48 @@ export async function handleApiRequest(
     }
 
     if (path === '/api/states') {
-      const modeParam = url.searchParams.get('mode');
-      const mode: WeatherMode = modeParam === 'live' ? 'live' : 'historical';
+      const mode: WeatherMode = url.searchParams.get('mode') === 'live' ? 'live' : 'historical';
       const forceRefresh = url.searchParams.get('refresh') === '1';
 
       if (mode === 'live') {
-        const key = 'live:states';
-        if (!forceRefresh) {
-          const hit = await cache.getJson<WeatherDatasetResponse>(key);
-          if (hit) {
-            return Response.json({ ...hit.value, cached: true });
-          }
-        }
-        const dataset = await fetchAllStatesLive();
-        await cache.setJson(key, dataset, LIVE_STATES_TTL_MS);
-        return Response.json(dataset);
+        const dataset = await cachedJson(
+          cache,
+          'live:states',
+          LIVE_STATES_TTL_MS,
+          fetchAllStatesLive,
+          forceRefresh,
+        );
+        return jsonResponse(dataset);
       }
 
-      // Historical mode
       const range = resolveHistoricalRange(url);
       if (!range.ok) return range.error;
       const { startDate, endDate, preset } = range;
 
-      const isDefaultRange =
+      if (
         startDate === DEFAULT_HISTORICAL_PRESET.startDate &&
-        endDate === DEFAULT_HISTORICAL_PRESET.endDate;
-
-      if (isDefaultRange && !forceRefresh) {
-        return Response.json({
+        endDate === DEFAULT_HISTORICAL_PRESET.endDate
+      ) {
+        return jsonResponse({
           ...(seedHistorical as unknown as WeatherDatasetResponse),
           cached: true,
         });
       }
 
-      const key = `hist:states:${startDate}:${endDate}`;
-      if (!forceRefresh) {
-        const hit = await cache.getJson<WeatherDatasetResponse>(key);
-        if (hit) {
-          return Response.json({ ...hit.value, cached: true });
-        }
-      }
-
-      const dataset = await fetchAllStatesHistorical({
-        startDate,
-        endDate,
-        presetId: preset?.id,
-        presetLabel: preset?.label,
-        defaultFrameIndex: preset?.defaultFrameIndex,
-      });
-      await cache.setJson(key, dataset, null);
-      return Response.json(dataset);
+      const dataset = await cachedJson(
+        cache,
+        `hist:states:${startDate}:${endDate}`,
+        null,
+        () =>
+          fetchAllStatesHistorical({
+            startDate,
+            endDate,
+            presetId: preset?.id,
+            presetLabel: preset?.label,
+            defaultFrameIndex: preset?.defaultFrameIndex,
+          }),
+      );
+      return jsonResponse(dataset);
     }
 
     if (path.startsWith('/api/state/')) {
@@ -190,97 +237,93 @@ export async function handleApiRequest(
 
       const mode: WeatherMode = url.searchParams.get('mode') === 'live' ? 'live' : 'historical';
       const forceRefresh = url.searchParams.get('refresh') === '1';
+      const range = mode === 'historical' ? resolveHistoricalRange(url) : null;
+      if (range && !range.ok) return range.error;
 
       if (segments.length === 2) {
         if (segments[1] !== 'cities') {
           return jsonError(404, `Unknown state endpoint: ${path}`);
         }
 
-        const range = mode === 'historical' ? resolveHistoricalRange(url) : null;
-        if (range && !range.ok) return range.error;
-
         const cacheKey =
           mode === 'live'
             ? `live:cities:${code}`
             : `hist:cities:${code}:${range!.startDate}:${range!.endDate}`;
 
-        if (!forceRefresh) {
-          const hit = await cache.getJson<StateCitiesWeatherResponse>(cacheKey);
-          if (hit) {
-            return Response.json({ ...hit.value, cached: true });
-          }
-        }
-
-        const citiesWeather = await fetchStateTopCitiesWeather({
-          code,
-          mode,
-          startDate: range?.ok ? range.startDate : undefined,
-          endDate: range?.ok ? range.endDate : undefined,
-          defaultFrameIndex: range?.ok ? range.preset?.defaultFrameIndex : undefined,
-        });
-        await cache.setJson(cacheKey, citiesWeather, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
-        return Response.json(citiesWeather);
+        const citiesWeather = await cachedJson<StateCitiesWeatherResponse>(
+          cache,
+          cacheKey,
+          mode === 'live' ? LIVE_DETAIL_TTL_MS : null,
+          () =>
+            fetchStateTopCitiesWeather({
+              code,
+              mode,
+              startDate: range?.ok ? range.startDate : undefined,
+              endDate: range?.ok ? range.endDate : undefined,
+              defaultFrameIndex: range?.ok ? range.preset?.defaultFrameIndex : undefined,
+            }),
+          forceRefresh,
+        );
+        return jsonResponse(citiesWeather);
       }
 
-      const city = url.searchParams.get('city') ?? meta.primaryCity;
-      const startDate = url.searchParams.get('startDate') ?? DEFAULT_HISTORICAL_PRESET.startDate;
-      const endDate = url.searchParams.get('endDate') ?? DEFAULT_HISTORICAL_PRESET.endDate;
+      const city = resolveKnownStateCity(code, url.searchParams.get('city'));
+      if (!city) {
+        return jsonError(400, `Unknown city for state ${code}`);
+      }
 
       const cacheKey =
         mode === 'live'
           ? `live:detail:${code}:${city}`
-          : `hist:detail:${code}:${city}:${startDate}:${endDate}`;
+          : `hist:detail:${code}:${city}:${range!.startDate}:${range!.endDate}`;
 
-      if (!forceRefresh) {
-        const hit = await cache.getJson<StateDetailResponse>(cacheKey);
-        if (hit) {
-          const detail = { ...hit.value, cached: true };
-          if (mode === 'live') {
-            const alerts = await getCachedAlerts(cache).catch(() => null);
-            detail.alerts = alerts?.byState[code] ?? [];
-          }
-          return Response.json(detail);
-        }
-      }
-
-      const detail = await fetchStateDetail({
-        code,
-        cityName: city,
-        mode,
-        startDate: mode === 'historical' ? startDate : undefined,
-        endDate: mode === 'historical' ? endDate : undefined,
-      });
+      const detail = await cachedJson<StateDetailResponse>(
+        cache,
+        cacheKey,
+        mode === 'live' ? LIVE_DETAIL_TTL_MS : null,
+        () =>
+          fetchStateDetail({
+            code,
+            cityName: city,
+            mode,
+            startDate: range?.ok ? range.startDate : undefined,
+            endDate: range?.ok ? range.endDate : undefined,
+          }),
+        forceRefresh,
+      );
 
       if (mode === 'live') {
         const alerts = await getCachedAlerts(cache).catch(() => null);
-        detail.alerts = alerts?.byState[code] ?? [];
+        return jsonResponse({ ...detail, alerts: alerts?.byState[code] ?? [] });
       }
-
-      await cache.setJson(cacheKey, detail, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
-      return Response.json(detail);
+      return jsonResponse(detail);
     }
 
     if (path === '/api/alerts') {
       const forceRefresh = url.searchParams.get('refresh') === '1';
-      const alerts = await getCachedAlerts(cache, forceRefresh);
-      return Response.json(alerts);
+      return jsonResponse(await getCachedAlerts(cache, forceRefresh));
     }
 
     if (path === '/api/radar/frames') {
       const mode: WeatherMode = url.searchParams.get('mode') === 'live' ? 'live' : 'historical';
       if (mode === 'historical') {
-        const anchor = url.searchParams.get('anchor') ?? '2026-11-18T18:00:00Z';
-        return Response.json(buildHistoricalRadarFrames(anchor, 12));
+        const anchorParam = url.searchParams.get('anchor');
+        if (anchorParam !== null && !isValidUtcTimestamp(anchorParam)) {
+          return jsonError(400, 'Invalid anchor timestamp');
+        }
+        return jsonResponse(buildHistoricalRadarFrames(anchorParam ?? '2026-11-18T18:00:00Z', 12));
       }
 
       const key = 'live:radar:frames';
       const hit = await cache.getJson<RadarFramesResponse>(key);
-      if (hit) {
-        return Response.json(hit.value);
-      }
-      const frames = await fetchLiveRadarFrames();
-      await cache.setJson(key, frames, RADAR_FRAMES_TTL_MS);
-      return Response.json(frames);
+      if (hit) return jsonResponse(hit.value);
+
+      const frames = await coalesce(key, async () => {
+        const fresh = await fetchLiveRadarFrames();
+        await cache.setJson(key, fresh, RADAR_FRAMES_TTL_MS);
+        return fresh;
+      });
+      return jsonResponse(frames);
     }
 
     if (path === '/api/radar/image') {
@@ -291,8 +334,8 @@ export async function handleApiRequest(
       }
       const region = regionParam as RadarRegion;
       const ts = url.searchParams.get('ts');
-      if (!ts) {
-        return jsonError(400, 'Missing ts query parameter');
+      if (!isValidUtcTimestamp(ts)) {
+        return jsonError(400, 'Invalid ts query parameter');
       }
 
       const key = `radar:${mode}:${region}:${ts}`;
@@ -302,20 +345,28 @@ export async function handleApiRequest(
           headers: {
             'Content-Type': hit.contentType,
             'Cache-Control': 'public, max-age=300',
+            'X-Content-Type-Options': 'nosniff',
             'X-Radar-Cache': 'hit',
           },
         });
       }
 
-      const png = await fetchRadarImagePng({ mode, region, timestamp: ts });
+      const png = await coalesce(key, async () => {
+        const bytes = await fetchRadarImagePng({ mode, region, timestamp: ts });
+        if (bytes) {
+          await cache.setBlob(key, bytes, 'image/png', mode === 'live' ? LIVE_RADAR_IMAGE_TTL_MS : null);
+        }
+        return bytes;
+      });
+
       if (!png) {
         return jsonError(404, 'Radar frame unavailable for region/timestamp');
       }
-      await cache.setBlob(key, png, 'image/png', mode === 'live' ? LIVE_RADAR_IMAGE_TTL_MS : null);
       return new Response(new Uint8Array(png), {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=300',
+          'X-Content-Type-Options': 'nosniff',
           'X-Radar-Cache': 'miss',
         },
       });
@@ -323,7 +374,7 @@ export async function handleApiRequest(
 
     return jsonError(404, `Unknown endpoint: ${path}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unexpected server error';
-    return jsonError(502, message);
+    console.error('API request failed:', path, err);
+    return jsonError(502, 'Upstream weather service unavailable');
   }
 }

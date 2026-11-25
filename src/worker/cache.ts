@@ -30,32 +30,23 @@ export interface WeatherCacheStore {
   stats(): CacheStats;
 }
 
-interface MemoryJsonEntry {
-  value: unknown;
-  createdAt: number;
-  expiresAt: number | null;
-}
-
-interface MemoryBlobEntry {
-  data: Uint8Array;
+interface MemoryEntry<T> {
+  value: T;
   contentType: string;
   createdAt: number;
   expiresAt: number | null;
 }
 
-const MAX_MEMORY_JSON_ENTRIES = 32;
-const MAX_MEMORY_BLOB_ENTRIES = 32;
+const MAX_MEMORY_ENTRIES = 32;
 const HISTORICAL_EDGE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-const memoryJsonCache = new Map<string, MemoryJsonEntry>();
-const memoryBlobCache = new Map<string, MemoryBlobEntry>();
+const memoryJsonCache = new Map<string, MemoryEntry<unknown>>();
+const memoryBlobCache = new Map<string, MemoryEntry<Uint8Array>>();
 
-function setBounded<T>(map: Map<string, T>, key: string, value: T, maxEntries: number): void {
-  if (map.has(key)) {
-    map.delete(key);
-  }
+function setBounded<T>(map: Map<string, T>, key: string, value: T): void {
+  if (map.has(key)) map.delete(key);
   map.set(key, value);
-  while (map.size > maxEntries) {
+  while (map.size > MAX_MEMORY_ENTRIES) {
     const oldestKey = map.keys().next().value;
     if (oldestKey === undefined) break;
     map.delete(oldestKey);
@@ -64,8 +55,7 @@ function setBounded<T>(map: Map<string, T>, key: string, value: T, maxEntries: n
 
 function getDefaultEdgeCache(): Cache | null {
   if (typeof caches === 'undefined') return null;
-  const candidate = (caches as unknown as { default?: Cache }).default;
-  return candidate ?? null;
+  return (caches as unknown as { default?: Cache }).default ?? null;
 }
 
 function makeCacheRequest(kind: 'json' | 'blob', key: string): Request {
@@ -73,11 +63,6 @@ function makeCacheRequest(kind: 'json' | 'blob', key: string): Request {
     `https://weather-station-cache.internal/${kind}/${encodeURIComponent(key)}`,
     { method: 'GET' },
   );
-}
-
-function resolveMaxAgeSeconds(ttlMs: number | null): number {
-  if (ttlMs === null) return HISTORICAL_EDGE_TTL_SECONDS;
-  return Math.max(1, Math.floor(ttlMs / 1000));
 }
 
 export function clearWorkerMemoryCache(): void {
@@ -90,23 +75,21 @@ export interface WaitUntilContext {
 }
 
 export class WorkerWeatherCache implements WeatherCacheStore {
-  private readonly ctx?: WaitUntilContext;
+  constructor(private readonly ctx?: WaitUntilContext) {}
 
-  constructor(ctx?: WaitUntilContext) {
-    this.ctx = ctx;
-  }
-
-  async getJson<T>(key: string, now = Date.now()): Promise<CacheHit<T> | null> {
-    const memHit = memoryJsonCache.get(key);
+  private async getEntry<T>(
+    kind: 'json' | 'blob',
+    map: Map<string, MemoryEntry<T>>,
+    key: string,
+    decode: (res: Response) => Promise<T>,
+    now: number,
+  ): Promise<MemoryEntry<T> | null> {
+    const memHit = map.get(key);
     if (memHit) {
       if (memHit.expiresAt !== null && memHit.expiresAt <= now) {
-        memoryJsonCache.delete(key);
+        map.delete(key);
       } else {
-        return {
-          value: memHit.value as T,
-          createdAt: memHit.createdAt,
-          expiresAt: memHit.expiresAt,
-        };
+        return memHit;
       }
     }
 
@@ -114,44 +97,51 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     if (!edgeCache) return null;
 
     try {
-      const res = await edgeCache.match(makeCacheRequest('json', key));
+      const res = await edgeCache.match(makeCacheRequest(kind, key));
       if (!res) return null;
 
       const createdAt = Number(res.headers.get('X-Cache-Created-At') ?? now);
       const rawExpires = res.headers.get('X-Cache-Expires-At');
-      const expiresAt = rawExpires ? Number(rawExpires) : null;
+      const parsedExpires = rawExpires ? Number(rawExpires) : null;
+      const expiresAt =
+        parsedExpires !== null && Number.isFinite(parsedExpires) ? parsedExpires : null;
 
-      if (expiresAt !== null && Number.isFinite(expiresAt) && expiresAt <= now) {
-        return null;
-      }
+      if (expiresAt !== null && expiresAt <= now) return null;
 
-      const value = (await res.json()) as T;
-      const entry: MemoryJsonEntry = {
-        value,
+      const entry: MemoryEntry<T> = {
+        value: await decode(res),
+        contentType: res.headers.get('Content-Type') ?? 'application/octet-stream',
         createdAt: Number.isFinite(createdAt) ? createdAt : now,
-        expiresAt: expiresAt !== null && Number.isFinite(expiresAt) ? expiresAt : null,
+        expiresAt,
       };
-      setBounded(memoryJsonCache, key, entry, MAX_MEMORY_JSON_ENTRIES);
-      return {
-        value,
-        createdAt: entry.createdAt,
-        expiresAt: entry.expiresAt,
-      };
+      setBounded(map, key, entry);
+      return entry;
     } catch {
       return null;
     }
   }
 
-  async setJson<T>(key: string, value: T, ttlMs: number | null, now = Date.now()): Promise<void> {
+  private async setEntry<T>(
+    kind: 'json' | 'blob',
+    map: Map<string, MemoryEntry<T>>,
+    key: string,
+    value: T,
+    contentType: string,
+    body: BodyInit,
+    ttlMs: number | null,
+    now: number,
+  ): Promise<void> {
     const expiresAt = ttlMs === null ? null : now + ttlMs;
-    setBounded(memoryJsonCache, key, { value, createdAt: now, expiresAt }, MAX_MEMORY_JSON_ENTRIES);
+    setBounded(map, key, { value, contentType, createdAt: now, expiresAt });
 
     const edgeCache = getDefaultEdgeCache();
     if (!edgeCache) return;
 
+    const maxAge =
+      ttlMs === null ? HISTORICAL_EDGE_TTL_SECONDS : Math.max(1, Math.floor(ttlMs / 1000));
     const headers = new Headers({
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': `public, max-age=${resolveMaxAgeSeconds(ttlMs)}`,
+      'Content-Type': contentType,
+      'Cache-Control': `public, max-age=${maxAge}`,
       'X-Cache-Created-At': String(now),
     });
     if (expiresAt !== null) {
@@ -159,7 +149,7 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     }
 
     const putOp = edgeCache
-      .put(makeCacheRequest('json', key), new Response(JSON.stringify(value), { headers }))
+      .put(makeCacheRequest(kind, key), new Response(body, { headers }))
       .catch(() => {});
 
     if (this.ctx) {
@@ -169,52 +159,35 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     }
   }
 
+  async getJson<T>(key: string, now = Date.now()): Promise<CacheHit<T> | null> {
+    const hit = await this.getEntry('json', memoryJsonCache, key, (r) => r.json(), now);
+    if (!hit) return null;
+    return { value: hit.value as T, createdAt: hit.createdAt, expiresAt: hit.expiresAt };
+  }
+
+  async setJson<T>(key: string, value: T, ttlMs: number | null, now = Date.now()): Promise<void> {
+    await this.setEntry(
+      'json',
+      memoryJsonCache,
+      key,
+      value,
+      'application/json; charset=utf-8',
+      JSON.stringify(value),
+      ttlMs,
+      now,
+    );
+  }
+
   async getBlob(key: string, now = Date.now()): Promise<BlobCacheHit | null> {
-    const memHit = memoryBlobCache.get(key);
-    if (memHit) {
-      if (memHit.expiresAt !== null && memHit.expiresAt <= now) {
-        memoryBlobCache.delete(key);
-      } else {
-        return {
-          data: memHit.data,
-          contentType: memHit.contentType,
-          createdAt: memHit.createdAt,
-        };
-      }
-    }
-
-    const edgeCache = getDefaultEdgeCache();
-    if (!edgeCache) return null;
-
-    try {
-      const res = await edgeCache.match(makeCacheRequest('blob', key));
-      if (!res) return null;
-
-      const createdAt = Number(res.headers.get('X-Cache-Created-At') ?? now);
-      const rawExpires = res.headers.get('X-Cache-Expires-At');
-      const expiresAt = rawExpires ? Number(rawExpires) : null;
-
-      if (expiresAt !== null && Number.isFinite(expiresAt) && expiresAt <= now) {
-        return null;
-      }
-
-      const data = new Uint8Array(await res.arrayBuffer());
-      const contentType = res.headers.get('Content-Type') ?? 'application/octet-stream';
-      const entry: MemoryBlobEntry = {
-        data,
-        contentType,
-        createdAt: Number.isFinite(createdAt) ? createdAt : now,
-        expiresAt: expiresAt !== null && Number.isFinite(expiresAt) ? expiresAt : null,
-      };
-      setBounded(memoryBlobCache, key, entry, MAX_MEMORY_BLOB_ENTRIES);
-      return {
-        data,
-        contentType,
-        createdAt: entry.createdAt,
-      };
-    } catch {
-      return null;
-    }
+    const hit = await this.getEntry(
+      'blob',
+      memoryBlobCache,
+      key,
+      async (r) => new Uint8Array(await r.arrayBuffer()),
+      now,
+    );
+    if (!hit) return null;
+    return { data: hit.value, contentType: hit.contentType, createdAt: hit.createdAt };
   }
 
   async setBlob(
@@ -224,36 +197,17 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     ttlMs: number | null,
     now = Date.now(),
   ): Promise<void> {
-    const expiresAt = ttlMs === null ? null : now + ttlMs;
     const copy = new Uint8Array(data);
-    setBounded(
+    await this.setEntry(
+      'blob',
       memoryBlobCache,
       key,
-      { data: copy, contentType, createdAt: now, expiresAt },
-      MAX_MEMORY_BLOB_ENTRIES,
+      copy,
+      contentType,
+      new Uint8Array(copy),
+      ttlMs,
+      now,
     );
-
-    const edgeCache = getDefaultEdgeCache();
-    if (!edgeCache) return;
-
-    const headers = new Headers({
-      'Content-Type': contentType,
-      'Cache-Control': `public, max-age=${resolveMaxAgeSeconds(ttlMs)}`,
-      'X-Cache-Created-At': String(now),
-    });
-    if (expiresAt !== null) {
-      headers.set('X-Cache-Expires-At', String(expiresAt));
-    }
-
-    const putOp = edgeCache
-      .put(makeCacheRequest('blob', key), new Response(new Uint8Array(copy), { headers }))
-      .catch(() => {});
-
-    if (this.ctx) {
-      this.ctx.waitUntil(putOp);
-    } else {
-      await putOp;
-    }
   }
 
   stats(): CacheStats {

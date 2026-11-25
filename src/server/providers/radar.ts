@@ -5,6 +5,7 @@ export { RADAR_BBOX_4326, type RadarRegion };
 
 const NOAA_CAPS_URL =
   'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/wms?service=WMS&request=GetCapabilities';
+const MAX_RADAR_PNG_BYTES = 5 * 1024 * 1024;
 
 function formatFrameLabel(iso: string): string {
   const d = new Date(iso);
@@ -43,10 +44,7 @@ export function parseNoaaCapabilitiesTimes(xml: string, maxFrames = 12): string[
 
 export async function fetchLiveRadarFrames(): Promise<RadarFramesResponse> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    const res = await fetch(NOAA_CAPS_URL, { signal: controller.signal });
-    clearTimeout(timer);
+    const res = await fetch(NOAA_CAPS_URL, { signal: AbortSignal.timeout(10_000) });
     if (res.ok) {
       const xml = await res.text();
       const times = parseNoaaCapabilitiesTimes(xml, 12);
@@ -169,15 +167,14 @@ export async function fetchRadarImagePng(opts: {
   const url = buildUpstreamRadarUrl(opts);
   if (!url) return null;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 14_000);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) return null;
-    const ct = res.headers.get('content-type') ?? '';
-    if (!ct.includes('image/png')) return null;
-    return new Uint8Array(await res.arrayBuffer());
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await fetch(url, { signal: AbortSignal.timeout(14_000) });
+  if (!res.ok) return null;
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('image/png')) return null;
+
+  const declaredLen = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_RADAR_PNG_BYTES) return null;
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return bytes.byteLength <= MAX_RADAR_PNG_BYTES ? bytes : null;
 }
