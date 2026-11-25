@@ -44,7 +44,7 @@ import { WeatherGlyph } from './WeatherIcon';
 import {
   type WeatherPhenomenon,
   buildShowcasePhenomena,
-  classifyWeatherPhenomenon,
+  classifySnapshotPhenomenon,
   hasActiveMapFx,
 } from '../../shared/weatherPhenomena';
 import { geoPath } from 'd3-geo';
@@ -150,22 +150,7 @@ export function MapCanvas({
       const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
       const phenom = showcaseMap
         ? showcaseMap[item.meta.code]!
-        : classifyWeatherPhenomenon(
-            {
-              weatherCode: slice.weatherCode,
-              precipitationMm: slice.precipitationMm,
-              temperatureF: slice.temperatureF,
-              apparentTemperatureF: slice.apparentTemperatureF,
-              windSpeedMph: slice.windSpeedMph,
-              windDirectionDeg: slice.windDirectionDeg,
-              humidity: slice.humidity,
-              uvIndex: snap.current.uvIndex,
-              usAqi: snap.current.usAqi,
-              cloudCoverPct: snap.current.cloudCoverPct,
-            },
-            alertsByState[item.meta.code],
-            metric,
-          );
+        : classifySnapshotPhenomenon(slice, snap.current, alertsByState[item.meta.code], metric);
       byCode[item.meta.code] = {
         slice,
         displayVal: scaleConfig.formatMapValue(rawMetric, unit),

@@ -12,7 +12,7 @@ import {
   type WeatherPhenomenon,
   buildCityShowcasePhenomena,
   buildShowcasePhenomena,
-  classifyWeatherPhenomenon,
+  classifySnapshotPhenomenon,
   hasActiveMapFx,
 } from '../../shared/weatherPhenomena';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
@@ -336,22 +336,7 @@ export function WeatherEffectsOverlay({
           const slice = resolveStateSlice(city, timelineIndex, useTimeline);
           const statePhenom = cityShowcase
             ? cityShowcase[city.name]!
-            : classifyWeatherPhenomenon(
-                {
-                  weatherCode: slice.weatherCode,
-                  precipitationMm: slice.precipitationMm,
-                  temperatureF: slice.temperatureF,
-                  apparentTemperatureF: slice.apparentTemperatureF,
-                  windSpeedMph: slice.windSpeedMph,
-                  windDirectionDeg: slice.windDirectionDeg,
-                  humidity: slice.humidity,
-                  uvIndex: city.current.uvIndex,
-                  usAqi: city.current.usAqi,
-                  cloudCoverPct: city.current.cloudCoverPct,
-                },
-                alertsByState[code],
-                metric,
-              );
+            : classifySnapshotPhenomenon(slice, city.current, alertsByState[code], metric);
 
           if (!hasActiveMapFx(statePhenom.phenomenon, metric)) continue;
 
@@ -390,22 +375,7 @@ export function WeatherEffectsOverlay({
         statePhenom = showcaseStates[code]!;
       } else {
         const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-        statePhenom = classifyWeatherPhenomenon(
-          {
-            weatherCode: slice.weatherCode,
-            precipitationMm: slice.precipitationMm,
-            temperatureF: slice.temperatureF,
-            apparentTemperatureF: slice.apparentTemperatureF,
-            windSpeedMph: slice.windSpeedMph,
-            windDirectionDeg: slice.windDirectionDeg,
-            humidity: slice.humidity,
-            uvIndex: snap.current.uvIndex,
-            usAqi: snap.current.usAqi,
-            cloudCoverPct: snap.current.cloudCoverPct,
-          },
-          alertsByState[code],
-          metric,
-        );
+        statePhenom = classifySnapshotPhenomenon(slice, snap.current, alertsByState[code], metric);
       }
 
       if (!hasActiveMapFx(statePhenom.phenomenon, metric)) continue;

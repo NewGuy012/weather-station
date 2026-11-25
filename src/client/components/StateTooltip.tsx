@@ -1,7 +1,7 @@
 import { AlertTriangle, Droplets, MapPin, Wind, X } from 'lucide-react';
 import type { StateWeatherSnapshot, TempUnit, WeatherAlert } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
-import { classifyWeatherPhenomenon } from '../../shared/weatherPhenomena';
+import { classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';
 import { getWmoInfo } from '../../shared/wmoCodes';
 import type { ResolvedStateSlice } from '../utils/scales';
 import { WeatherIcon } from './WeatherIcon';
@@ -26,18 +26,7 @@ export function HoverTooltip({
   panActive = false,
 }: HoverTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
-  const phenom = classifyWeatherPhenomenon(
-    {
-      weatherCode: slice.weatherCode,
-      precipitationMm: slice.precipitationMm,
-      temperatureF: slice.temperatureF,
-      apparentTemperatureF: slice.apparentTemperatureF,
-      windSpeedMph: slice.windSpeedMph,
-      windDirectionDeg: slice.windDirectionDeg,
-      humidity: slice.humidity,
-    },
-    alerts,
-  );
+  const phenom = classifySnapshotPhenomenon(slice, snapshot.current, alerts);
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
 
@@ -128,18 +117,7 @@ export function PinnedStateTooltip({
   onClose,
 }: PinnedStateTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
-  const phenom = classifyWeatherPhenomenon(
-    {
-      weatherCode: slice.weatherCode,
-      precipitationMm: slice.precipitationMm,
-      temperatureF: slice.temperatureF,
-      apparentTemperatureF: slice.apparentTemperatureF,
-      windSpeedMph: slice.windSpeedMph,
-      windDirectionDeg: slice.windDirectionDeg,
-      humidity: slice.humidity,
-    },
-    alerts,
-  );
+  const phenom = classifySnapshotPhenomenon(slice, snapshot.current, alerts);
   const leftPct = (svgX / mapWidth) * 100;
   const topPct = (svgY / mapHeight) * 100;
   const placeLeft = leftPct > 65;

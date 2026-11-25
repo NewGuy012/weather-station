@@ -17,7 +17,7 @@ import type {
 } from '../shared/types';
 import {
   type WeatherFxIntensity,
-  classifyWeatherPhenomenon,
+  classifySnapshotPhenomenon,
   hasActiveMapFx,
 } from '../shared/weatherPhenomena';
 import { isEditableTarget } from './utils/mapViewport';
@@ -443,22 +443,7 @@ export function App() {
     let count = 0;
     for (const snap of Object.values(dataset.states)) {
       const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-      const res = classifyWeatherPhenomenon(
-        {
-          weatherCode: slice.weatherCode,
-          precipitationMm: slice.precipitationMm,
-          temperatureF: slice.temperatureF,
-          apparentTemperatureF: slice.apparentTemperatureF,
-          windSpeedMph: slice.windSpeedMph,
-          windDirectionDeg: slice.windDirectionDeg,
-          humidity: slice.humidity,
-          uvIndex: snap.current.uvIndex,
-          usAqi: snap.current.usAqi,
-          cloudCoverPct: snap.current.cloudCoverPct,
-        },
-        alerts?.[snap.code],
-        metric,
-      );
+      const res = classifySnapshotPhenomenon(slice, snap.current, alerts?.[snap.code], metric);
       if (hasActiveMapFx(res.phenomenon, metric)) count++;
     }
     return count;

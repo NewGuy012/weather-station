@@ -97,7 +97,7 @@ export function MetricToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[380px] flex-col gap-1.5 xl:bottom-3"
+      className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[356px] flex-col gap-1.5 xl:bottom-3"
     >
       {paletteOpen && (
         <div

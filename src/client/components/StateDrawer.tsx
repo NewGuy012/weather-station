@@ -34,7 +34,7 @@ import {
   uvCategory,
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
-import { classifyWeatherPhenomenon } from '../../shared/weatherPhenomena';
+import { classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';
 import { METRIC_SCALES, resolveMetricValue, resolveStateSlice } from '../utils/scales';
 import { DrawerWeatherBackdrop } from './DrawerWeatherBackdrop';
 import { HourlyChart } from './HourlyChart';
@@ -188,22 +188,7 @@ export function StateDrawer({
 
   const current = detail?.current ?? snapshot.current;
   const wmo = getWmoInfo(current.weatherCode);
-  const heroPhenomenon = classifyWeatherPhenomenon(
-    {
-      weatherCode: current.weatherCode,
-      precipitationMm: current.precipitationMm,
-      temperatureF: current.temperatureF,
-      apparentTemperatureF: current.apparentTemperatureF,
-      windSpeedMph: current.windSpeedMph,
-      windDirectionDeg: current.windDirectionDeg,
-      humidity: current.humidity,
-      uvIndex: current.uvIndex,
-      usAqi: current.usAqi,
-      cloudCoverPct: current.cloudCoverPct,
-    },
-    detail?.alerts,
-    metric,
-  );
+  const heroPhenomenon = classifySnapshotPhenomenon(current, current, detail?.alerts, metric);
   const aqiInfo = aqiCategory(current.usAqi);
   const isComparing = compareCodes.includes(meta.code);
   const isTop10Open = onToggleDetailedStateMode ? detailedStateMode : localTop10Open;

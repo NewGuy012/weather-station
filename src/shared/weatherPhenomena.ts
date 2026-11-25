@@ -1,7 +1,9 @@
 import type {
   CityWeatherSnapshot,
   MetricLayer,
+  StateCurrentMetrics,
   StateWeatherSnapshot,
+  TimelinePoint,
   WeatherAlert,
 } from './types';
 import { getWmoInfo } from './wmoCodes';
@@ -361,6 +363,42 @@ export function classifyWeatherPhenomenon(
     windDeg,
     wind,
     0,
+  );
+}
+
+/**
+ * Convenience helper to classify a resolved timeline/current weather snapshot slice.
+ */
+export function classifySnapshotPhenomenon(
+  slice: Pick<
+    TimelinePoint,
+    | 'weatherCode'
+    | 'precipitationMm'
+    | 'temperatureF'
+    | 'apparentTemperatureF'
+    | 'windSpeedMph'
+    | 'windDirectionDeg'
+    | 'humidity'
+  >,
+  supplements?: Partial<Pick<StateCurrentMetrics, 'uvIndex' | 'usAqi' | 'cloudCoverPct'>>,
+  alerts?: WeatherAlert[],
+  metric: MetricLayer = 'temperature',
+): StatePhenomenon {
+  return classifyWeatherPhenomenon(
+    {
+      weatherCode: slice.weatherCode,
+      precipitationMm: slice.precipitationMm,
+      temperatureF: slice.temperatureF,
+      apparentTemperatureF: slice.apparentTemperatureF,
+      windSpeedMph: slice.windSpeedMph,
+      windDirectionDeg: slice.windDirectionDeg,
+      humidity: slice.humidity,
+      uvIndex: supplements?.uvIndex,
+      usAqi: supplements?.usAqi,
+      cloudCoverPct: supplements?.cloudCoverPct,
+    },
+    alerts,
+    metric,
   );
 }
 
