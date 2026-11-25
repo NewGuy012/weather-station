@@ -26,6 +26,15 @@ export interface CityLocation {
   lat: number;
   lon: number;
   isPrimary?: boolean;
+  population?: number;
+}
+
+export interface TopCityMeta {
+  rank: number;
+  name: string;
+  population: number;
+  lat: number;
+  lon: number;
 }
 
 export interface StateMeta {
@@ -177,6 +186,29 @@ export interface StateDetailResponse {
   hourly: HourlyPoint[];
   daily: DailyPoint[];
   alerts: WeatherAlert[];
+}
+
+export interface CityWeatherSnapshot {
+  rank: number;
+  name: string;
+  population: number;
+  lat: number;
+  lon: number;
+  timezone: string;
+  current: StateCurrentMetrics;
+  timeline: TimelinePoint[];
+}
+
+export interface StateCitiesWeatherResponse {
+  mode: WeatherMode;
+  code: string;
+  name: string;
+  cached: boolean;
+  fetchedAt: string;
+  startDate: string;
+  endDate: string;
+  timelineHours: string[];
+  cities: CityWeatherSnapshot[];
 }
 
 export interface RadarFrame {

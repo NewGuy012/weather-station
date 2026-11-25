@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { geoContains } from 'd3-geo';
+import { feature } from 'topojson-client';
+import type { GeometryCollection, Topology } from 'topojson-specification';
+import usAtlasStates from 'us-atlas/states-10m.json';
 import { WeatherCache } from '../src/server/cache';
 import { US_STATES } from '../src/server/data/states';
+import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
 import { buildBatchDataset, computeTimelineStride, ensureUtcIso } from '../src/server/providers/openMeteo';
 import { buildHistoricalRadarFrames, parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
@@ -16,6 +21,34 @@ describe('50-State Registry & Seed Integrity', () => {
     expect(fips.size).toBe(50);
     for (const s of US_STATES) {
       expect(s.cities.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test('contains 10 ranked populated cities inside every state boundary', () => {
+    const topology = usAtlasStates as unknown as Topology<{
+      states: GeometryCollection<{ name: string }>;
+    }>;
+    const statesGeo = feature(topology, topology.objects.states);
+    const byFips = new Map(statesGeo.features.map((f) => [String(f.id ?? '').padStart(2, '0'), f]));
+
+    for (const st of US_STATES) {
+      const cities = TOP_CITIES_BY_STATE[st.code] ?? [];
+      expect(cities).toHaveLength(10);
+      const uniqueNames = new Set(cities.map((c) => c.name));
+      expect(uniqueNames.size).toBe(10);
+
+      const feat = byFips.get(st.fips);
+      expect(feat).toBeDefined();
+
+      for (let i = 0; i < cities.length; i++) {
+        const city = cities[i]!;
+        expect(city.rank).toBe(i + 1);
+        expect(city.population).toBeGreaterThan(0);
+        if (i > 0) {
+          expect(city.population).toBeLessThanOrEqual(cities[i - 1]!.population);
+        }
+        expect(geoContains(feat!, [city.lon, city.lat])).toBe(true);
+      }
     }
   });
 });
