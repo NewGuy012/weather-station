@@ -1,5 +1,5 @@
-import { Minus, Plus, RotateCcw } from 'lucide-react';
-import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import { Hand, Minus, Plus, RotateCcw } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GeoJsonFeatureCollection,
   MetricLayer,
@@ -8,6 +8,26 @@ import type {
   WeatherAlert,
 } from '../../shared/types';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
+import {
+  DEFAULT_ZOOM,
+  DRAG_THRESHOLD_PX,
+  INITIAL_MAP_VIEW,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  type MapViewState,
+  type StageSize,
+  ZOOM_BUTTON_STEP,
+  clampPan,
+  getArrowPanDelta,
+  getWheelZoomFactor,
+  getZoomShortcutAction,
+  isEditableTarget,
+  isInteractiveTarget,
+  isSpaceKey,
+  isViewModified,
+  panByOffset,
+  zoomViewState,
+} from '../utils/mapViewport';
 import { METRIC_SCALES, interpolateColor, isColorLight } from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
 import { WeatherIcon } from './WeatherIcon';
@@ -25,6 +45,8 @@ interface MapCanvasProps {
   alertsByState?: Record<string, WeatherAlert[]>;
   alertPolygons?: GeoJsonFeatureCollection | null;
   showAlertPolygons?: boolean;
+  /** Disable keyboard shortcuts when a modal dialog is open */
+  shortcutsEnabled?: boolean;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
   /** Exposed SVG ref for PNG export */
@@ -63,6 +85,7 @@ export function MapCanvas({
   alertsByState = {},
   alertPolygons,
   showAlertPolygons = false,
+  shortcutsEnabled = true,
   overlays,
   mapContainerRef,
 }: MapCanvasProps) {
@@ -70,11 +93,48 @@ export function MapCanvas({
   const scaleConfig = METRIC_SCALES[metric];
 
   const [hovered, setHovered] = useState<{ code: string; x: number; y: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(
-    null,
+  const [view, setView] = useState<MapViewState>(INITIAL_MAP_VIEW);
+  const [panMode, setPanMode] = useState(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const stageElRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+    startedInPanMode: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const isPanActive = panMode || spaceHeld;
+  const panModeRef = useRef(panMode);
+  panModeRef.current = panMode;
+  const isPanActiveRef = useRef(isPanActive);
+  isPanActiveRef.current = isPanActive;
+
+  const setStageRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      stageElRef.current = node;
+      if (mapContainerRef) {
+        mapContainerRef.current = node;
+      }
+    },
+    [mapContainerRef],
   );
+
+  const getStageSize = useCallback((): StageSize => {
+    const el = stageElRef.current;
+    return {
+      width: el?.clientWidth || 1000,
+      height: el?.clientHeight || 625,
+    };
+  }, []);
 
   const alertPaths = useMemo(() => {
     if (!showAlertPolygons || !alertPolygons?.features?.length) return [];
@@ -92,49 +152,217 @@ export function MapCanvas({
       .filter((item): item is { id: string; d: string; severity: string } => item !== null);
   }, [alertPolygons, showAlertPolygons]);
 
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.12 : 0.89;
-    setZoom((z) => {
-      const next = Math.min(3.5, Math.max(1, Number((z * factor).toFixed(2))));
-      if (next === 1) setPan({ x: 0, y: 0 });
-      return next;
-    });
-  }, []);
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (zoom <= 1) return;
-      dragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        origX: pan.x,
-        origY: pan.y,
-        moved: false,
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      const factor = getWheelZoomFactor(e.deltaY, e.deltaMode, e.ctrlKey);
+      if (factor === 1) return;
+
+      const vpRect = vp.getBoundingClientRect();
+      const focalOffset = {
+        x: e.clientX - (vpRect.left + vpRect.width / 2),
+        y: e.clientY - (vpRect.top + vpRect.height / 2),
       };
+      const stageSize = getStageSize();
+      setView((prev) =>
+        zoomViewState(prev, prev.zoom * factor, stageSize, {
+          focalOffset,
+          preservePanAtMinZoom: isPanActiveRef.current,
+        }),
+      );
+    };
+
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    return () => vp.removeEventListener('wheel', onWheel);
+  }, [getStageSize]);
+
+  const zoomByStep = useCallback(
+    (delta: number) => {
+      const stageSize = getStageSize();
+      setView((prev) =>
+        zoomViewState(prev, prev.zoom + delta, stageSize, {
+          preservePanAtMinZoom: isPanActiveRef.current,
+        }),
+      );
     },
-    [zoom, pan],
+    [getStageSize],
   );
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dx = e.clientX - drag.startX;
-    const dy = e.clientY - drag.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      drag.moved = true;
-    }
-    setPan({ x: drag.origX + dx, y: drag.origY + dy });
-  }, []);
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const isMiddleButton = e.button === 1;
+      const canStartLeftDrag =
+        e.button === 0 && (isPanActiveRef.current || view.zoom > DEFAULT_ZOOM);
+      if (!isMiddleButton && !canStartLeftDrag) return;
+      if (isInteractiveTarget(e.target)) return;
 
-  const handleMouseUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
+      const startedInPanMode = isPanActiveRef.current || isMiddleButton;
+      if (startedInPanMode) {
+        e.preventDefault();
+      }
+
+      suppressClickRef.current = startedInPanMode;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: view.pan.x,
+        origY: view.pan.y,
+        moved: false,
+        startedInPanMode,
+      };
+      setDragActive(true);
+      if (startedInPanMode) {
+        setIsDragging(true);
+        setHovered(null);
+      }
+    },
+    [view.zoom, view.pan.x, view.pan.y],
+  );
+
+  useEffect(() => {
+    if (!dragActive) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+        drag.moved = true;
+        suppressClickRef.current = true;
+        setIsDragging(true);
+        setHovered(null);
+      }
+
+      if (drag.moved || drag.startedInPanMode) {
+        const stageSize = getStageSize();
+        setView((prev) => ({
+          zoom: prev.zoom,
+          pan: clampPan({ x: drag.origX + dx, y: drag.origY + dy }, prev.zoom, stageSize),
+        }));
+      }
+    };
+
+    const endDrag = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const shouldSuppress = drag.moved || drag.startedInPanMode;
+      dragRef.current = null;
+      setIsDragging(false);
+      setDragActive(false);
+      if (shouldSuppress) {
+        window.setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
+    };
+
+    const cancelDrag = () => {
+      dragRef.current = null;
+      suppressClickRef.current = false;
+      setIsDragging(false);
+      setDragActive(false);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    window.addEventListener('blur', cancelDrag);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+      window.removeEventListener('blur', cancelDrag);
+    };
+  }, [dragActive, getStageSize]);
+
+  useEffect(() => {
+    if (!shortcutsEnabled) {
+      setSpaceHeld(false);
+      return;
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (isSpaceKey(e)) {
+        if (isInteractiveTarget(e.target)) return;
+        e.preventDefault();
+        if (!e.repeat) setSpaceHeld(true);
+        return;
+      }
+
+      if (isEditableTarget(e.target)) return;
+
+      if (e.key.toLowerCase() === 'p' && !e.repeat) {
+        e.preventDefault();
+        setPanMode((prev) => !prev);
+        return;
+      }
+
+      if (e.key === 'Escape' && panModeRef.current) {
+        setPanMode(false);
+        return;
+      }
+
+      const zoomAction = getZoomShortcutAction(e);
+      if (zoomAction) {
+        e.preventDefault();
+        if (zoomAction === 'in') {
+          zoomByStep(ZOOM_BUTTON_STEP);
+        } else if (zoomAction === 'out') {
+          zoomByStep(-ZOOM_BUTTON_STEP);
+        } else {
+          setView(INITIAL_MAP_VIEW);
+        }
+        return;
+      }
+
+      if (isPanActiveRef.current) {
+        const delta = getArrowPanDelta(e);
+        if (delta) {
+          e.preventDefault();
+          setView((prev) => panByOffset(prev, delta.x, delta.y, getStageSize()));
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (isSpaceKey(e)) {
+        setSpaceHeld(false);
+      }
+    };
+
+    const handleBlur = () => {
+      setSpaceHeld(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [shortcutsEnabled, getStageSize, zoomByStep]);
 
   const resetView = useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
+    setView(INITIAL_MAP_VIEW);
   }, []);
+
+  const handleControlClick =
+    (action: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => {
+      // Release focus after pointer clicks so Spacebar panning works immediately afterwards.
+      if (e.detail > 0) e.currentTarget.blur();
+      action();
+    };
 
   const selectedGeo = useMemo(
     () => (selectedCode ? geometries.find((g) => g.meta.code === selectedCode) ?? null : null),
@@ -145,32 +373,41 @@ export function MapCanvas({
   const hoveredSnap = hovered ? states[hovered.code] : undefined;
   const hoveredSlice = hoveredSnap ? resolveStateSlice(hoveredSnap, timelineIndex, useTimeline) : null;
   const selectedSlice = selectedSnap ? resolveStateSlice(selectedSnap, timelineIndex, useTimeline) : null;
+  const canDrag = isPanActive || view.zoom > DEFAULT_ZOOM;
+  const showReset = isViewModified(view);
+  const canZoomIn = view.zoom < MAX_ZOOM;
+  const canZoomOut = view.zoom > MIN_ZOOM;
+  const zoomPct = Math.round(view.zoom * 100);
 
   return (
     <div
-      className="relative flex h-full w-full items-center justify-center overflow-hidden select-none"
-      onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      ref={viewportRef}
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden select-none ${
+        canDrag ? 'touch-none' : ''
+      }`}
+      style={{
+        cursor: isDragging ? 'grabbing' : canDrag ? 'grab' : 'default',
+      }}
+      onPointerDown={handlePointerDown}
       onMouseLeave={() => {
         setHovered(null);
-        handleMouseUp();
       }}
       onClick={() => {
-        if (!dragRef.current?.moved && selectedCode) {
+        if (suppressClickRef.current || isPanActive) return;
+        if (selectedCode) {
           onSelectState(null);
         }
       }}
     >
       {/* Zoomable aspect-locked 975x610 map stage */}
       <div
-        ref={mapContainerRef}
-        className="relative w-full max-w-[1180px] transition-transform duration-150 ease-out"
+        ref={setStageRef}
+        className={`relative w-full max-w-[1180px] ${
+          isDragging ? 'transition-none' : 'transition-transform duration-150 ease-out'
+        }`}
         style={{
           aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}`,
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          cursor: zoom > 1 ? 'grab' : 'default',
+          transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})`,
         }}
       >
         <svg
@@ -238,12 +475,19 @@ export function MapCanvas({
                           : '#ffffff'
                   }
                   strokeWidth={isSelected ? 2.2 : isHovered ? 1.6 : 0.9}
-                  className="cursor-pointer transition-[fill,stroke-width] duration-300"
-                  onMouseEnter={(e) => setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY })}
-                  onMouseMove={(e) => setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY })}
+                  className={`${
+                    isDragging ? 'cursor-grabbing' : isPanActive ? 'cursor-grab' : 'cursor-pointer'
+                  } transition-[fill,stroke-width] duration-300`}
+                  onMouseEnter={(e) => {
+                    if (!isDragging) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
+                  }}
+                  onMouseMove={(e) => {
+                    if (!isDragging) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
+                  }}
                   onMouseLeave={() => setHovered((prev) => (prev?.code === item.meta.code ? null : prev))}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (suppressClickRef.current || isPanActive) return;
                     onSelectState(item.meta.code);
                   }}
                 />
@@ -420,7 +664,7 @@ export function MapCanvas({
       </div>
 
       {/* Hover Tooltip */}
-      {hovered && hoveredSnap && hoveredSlice && hovered.code !== selectedCode && (
+      {!isDragging && hovered && hoveredSnap && hoveredSlice && hovered.code !== selectedCode && (
         <HoverTooltip
           data={{
             snapshot: hoveredSnap,
@@ -436,45 +680,94 @@ export function MapCanvas({
           x={hovered.x}
           y={hovered.y}
           alerts={alertsByState[hovered.code]}
+          panActive={isPanActive}
         />
       )}
 
-      {/* Minimal Zoom Controls */}
+      {/* Map Pan & Zoom Controls */}
       <div
-        className="no-print absolute right-4 bottom-24 z-20 flex flex-col gap-1 rounded-xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
+        className={`no-print absolute bottom-24 z-20 flex flex-col gap-1 rounded-xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md transition-[right] duration-200 dark:border-slate-700/60 dark:bg-slate-900/85 ${
+          selectedCode ? 'right-4 lg:right-[444px]' : 'right-4'
+        }`}
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          onClick={() => setZoom((z) => Math.min(3.5, Number((z + 0.35).toFixed(2))))}
-          aria-label="Zoom in map"
-          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          onClick={handleControlClick(() => setPanMode((v) => !v))}
+          aria-label={panMode ? 'Disable pan mode' : 'Enable pan mode'}
+          aria-pressed={isPanActive}
+          title={
+            panMode
+              ? 'Disable pan mode (P) • Arrow keys pan'
+              : 'Enable pan mode (P) • Hold Space to pan'
+          }
+          className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 transition ${
+            isPanActive
+              ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
+              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+          }`}
         >
-          <Plus size={14} />
+          <Hand size={14} />
+          <kbd
+            className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+              isPanActive
+                ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+            }`}
+          >
+            P
+          </kbd>
         </button>
+        <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
         <button
           type="button"
-          onClick={() =>
-            setZoom((z) => {
-              const next = Math.max(1, Number((z - 0.35).toFixed(2)));
-              if (next === 1) setPan({ x: 0, y: 0 });
-              return next;
-            })
-          }
+          onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
+          disabled={!canZoomIn}
+          aria-label="Zoom in map"
+          title="Zoom in (+ / =) • Scroll wheel"
+          className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <Plus size={14} />
+          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            +
+          </kbd>
+        </button>
+        <div
+          aria-label={`Map zoom ${zoomPct}%`}
+          className="py-0.5 text-center tabular-nums text-[10px] font-semibold text-slate-500 dark:text-slate-400"
+        >
+          {zoomPct}%
+        </div>
+        <button
+          type="button"
+          onClick={handleControlClick(() => zoomByStep(-ZOOM_BUTTON_STEP))}
+          disabled={!canZoomOut}
           aria-label="Zoom out map"
-          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          title="Zoom out (-) • Scroll wheel"
+          className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <Minus size={14} />
+          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            -
+          </kbd>
         </button>
-        {zoom > 1 && (
-          <button
-            type="button"
-            onClick={resetView}
-            aria-label="Reset map zoom"
-            className="rounded-lg p-1.5 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
-          >
-            <RotateCcw size={14} />
-          </button>
+        {showReset && (
+          <>
+            <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+            <button
+              type="button"
+              onClick={handleControlClick(resetView)}
+              aria-label="Reset map view"
+              title="Reset zoom and pan (0)"
+              className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
+            >
+              <RotateCcw size={14} />
+              <kbd className="rounded bg-sky-100/80 px-1 py-0.5 text-[9px] font-semibold leading-none text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
+                0
+              </kbd>
+            </button>
+          </>
         )}
       </div>
 

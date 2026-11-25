@@ -21,9 +21,17 @@ interface HoverTooltipProps {
   x: number;
   y: number;
   alerts?: WeatherAlert[];
+  panActive?: boolean;
 }
 
-export function HoverTooltip({ data, unit, x, y, alerts = [] }: HoverTooltipProps) {
+export function HoverTooltip({
+  data,
+  unit,
+  x,
+  y,
+  alerts = [],
+  panActive = false,
+}: HoverTooltipProps) {
   const wmo = getWmoInfo(data.weatherCode);
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
@@ -88,7 +96,7 @@ export function HoverTooltip({ data, unit, x, y, alerts = [] }: HoverTooltipProp
       )}
 
       <div className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-        Click state for forecast & details
+        {panActive ? 'Drag to pan • Press P to exit pan mode' : 'Click state for forecast & details'}
       </div>
     </div>
   );
@@ -132,6 +140,7 @@ export function PinnedStateTooltip({
         })`,
       }}
       onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">

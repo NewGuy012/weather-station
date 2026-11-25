@@ -374,6 +374,7 @@ export function App() {
             alertsByState={mode === 'live' ? alertsData?.byState : undefined}
             alertPolygons={mode === 'live' ? alertsData?.featuresGeoJson : null}
             showAlertPolygons={mode === 'live' && showAlertPolygons}
+            shortcutsEnabled={!exportOpen}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
