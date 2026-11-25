@@ -251,7 +251,7 @@ export function StateDrawer({
   }, [cityOptions, selectedCity, activeDetail?.city, snapshot.city]);
 
   return (
-    <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] lg:bottom-28 xl:bottom-14 dark:border-slate-700/70 dark:bg-slate-900/95">
+    <aside className="no-print fixed top-28 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[min(26.25rem,calc(100vw-1.5rem))] md:top-20 lg:bottom-28 xl:bottom-14 dark:border-slate-700/70 dark:bg-slate-900/95">
       <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
@@ -262,23 +262,34 @@ export function StateDrawer({
             <span className="shrink-0 text-[11px] text-slate-400">{meta.region}</span>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close state details"
-            className="-mt-0.5 -mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          >
-            <X size={15} />
-          </button>
+          <div className="-mt-0.5 -mr-1 flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={onPrintState}
+              title="Print state weather report"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <Printer size={12} />
+              <span>Print</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close state details"
+              className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
-        <div className="mt-1.5 flex items-center gap-2">
-          <div className="relative inline-flex shrink-0 items-center">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          <div className="relative inline-flex max-w-full shrink-0 items-center">
             <select
               aria-label="Select city"
               value={activeCityValue}
               onChange={(e) => onSelectCity(e.target.value)}
-              className="max-w-[160px] appearance-none truncate rounded-lg border border-slate-200 bg-slate-50 py-1 pr-6 pl-2 text-xs font-medium text-slate-800 transition hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600"
+              className="max-w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 py-1 pr-6 pl-2 text-xs font-medium text-slate-800 transition hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600"
             >
               {cityOptions.map((cityName) => (
                 <option
@@ -297,23 +308,10 @@ export function StateDrawer({
           </div>
 
           {activeDetail && (
-            <span
-              title={`Elev ${activeDetail.elevationM}m • ${activeDetail.timezone}`}
-              className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400"
-            >
+            <span className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
               Elev {activeDetail.elevationM}m • {activeDetail.timezone}
             </span>
           )}
-
-          <button
-            type="button"
-            onClick={onPrintState}
-            title="Print state weather report"
-            className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Printer size={12} />
-            <span>Print</span>
-          </button>
         </div>
       </div>
 

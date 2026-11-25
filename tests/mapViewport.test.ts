@@ -172,29 +172,34 @@ describe('Colormaps, CSV Exporters & UI Smoke Tests', () => {
       })),
     };
 
-    expect(
-      renderToStaticMarkup(
-        createElement(TopBar, {
-          mode: 'historical',
-          onModeChange: () => {},
-          unit: 'F',
-          onUnitChange: () => {},
-          theme: 'dark',
-          onThemeToggle: () => {},
-          startDate: '2026-11-15',
-          endDate: '2026-11-19',
-          activePresetId: 'recent-nov-2026',
-          onSelectPreset: () => {},
-          onSelectCustomDates: () => {},
-          statesMeta: US_STATES,
-          onSelectState: () => {},
-          onRefresh: () => {},
-          onOpenExport: () => {},
-          isLoading: false,
-          sourceLabel: 'Recent 5-Day US Archive',
-        }),
-      ),
-    ).toContain('US Weather Station');
+    const topBarHtml = renderToStaticMarkup(
+      createElement(TopBar, {
+        mode: 'historical',
+        onModeChange: () => {},
+        unit: 'F',
+        onUnitChange: () => {},
+        theme: 'dark',
+        onThemeToggle: () => {},
+        startDate: '2026-11-15',
+        endDate: '2026-11-19',
+        activePresetId: 'recent-nov-2026',
+        onSelectPreset: () => {},
+        onSelectCustomDates: () => {},
+        statesMeta: US_STATES,
+        onSelectState: () => {},
+        onRefresh: () => {},
+        onOpenExport: () => {},
+        isLoading: false,
+        sourceLabel: 'Recent 5-Day US Archive',
+      }),
+    );
+    expect(topBarHtml).toContain('US Weather Station');
+    expect(topBarHtml).toMatch(
+      /<h1[^>]*class="[^"]*whitespace-nowrap[^"]*"[^>]*>US Weather Station<\/h1>/,
+    );
+    expect(topBarHtml).not.toMatch(
+      /<h1[^>]*class="[^"]*truncate[^"]*"[^>]*>US Weather Station<\/h1>/,
+    );
 
     expect(
       renderToStaticMarkup(
@@ -257,7 +262,24 @@ describe('Colormaps, CSV Exporters & UI Smoke Tests', () => {
       createElement(StateDrawer, {
         meta: STATE_BY_CODE.CA!,
         snapshot: dataset.states.CA!,
-        detail: null,
+        detail: {
+          mode: 'historical',
+          code: 'CA',
+          name: 'California',
+          city: 'San Jose',
+          lat: 37.34,
+          lon: -121.89,
+          elevationM: 87,
+          timezone: 'America/Los_Angeles',
+          fetchedAt: dataset.fetchedAt,
+          cached: true,
+          startDate: '2026-11-15',
+          endDate: '2026-11-19',
+          current: dataset.states.CA!.current,
+          hourly: [],
+          daily: [],
+          alerts: [],
+        },
         isLoading: false,
         mode: 'historical',
         unit: 'F',
@@ -278,6 +300,9 @@ describe('Colormaps, CSV Exporters & UI Smoke Tests', () => {
       }),
     );
     expect(drawerHtml).toContain('California');
+    expect(drawerHtml).toContain('Elev 87m • America/Los_Angeles');
+    expect(drawerHtml).not.toMatch(/<span[^>]*class="[^"]*truncate[^"]*"[^>]*>Elev 87m/);
+    expect(drawerHtml).not.toMatch(/<select[^>]*class="[^"]*truncate[^"]*"/);
     expect(drawerHtml).toContain('Compare States (1/3)');
     expect(drawerHtml).toMatch(/value="San Jose"[^>]*selected=""/);
   });

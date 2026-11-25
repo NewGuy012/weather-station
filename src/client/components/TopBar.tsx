@@ -102,27 +102,27 @@ export function TopBar({
 
   return (
     <header className="no-print pointer-events-none fixed inset-x-0 top-3 z-30 flex justify-center px-3">
-      <div className="pointer-events-auto flex w-full max-w-[1380px] flex-nowrap items-center justify-between gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 px-2.5 py-2 shadow-sm backdrop-blur-md lg:gap-2 lg:px-3 dark:border-slate-700/60 dark:bg-slate-900/85">
-        <div className="flex min-w-0 shrink items-center gap-2">
+      <div className="pointer-events-auto flex w-full max-w-[86.25rem] flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 rounded-2xl border border-slate-200/80 bg-white/85 px-2.5 py-2 shadow-sm backdrop-blur-md lg:gap-x-2 lg:px-3 dark:border-slate-700/60 dark:bg-slate-900/85">
+        <div className="order-1 flex shrink-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950">
             <Compass size={17} />
           </div>
-          <div className="hidden min-w-0 md:block">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-sm font-semibold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-sm font-semibold tracking-tight whitespace-nowrap text-slate-900 dark:text-white">
                 US Weather Station
               </h1>
               <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 xl:inline-block dark:bg-slate-800 dark:text-slate-300">
                 50 States
               </span>
             </div>
-            <p className="hidden truncate text-[11px] text-slate-500 lg:block dark:text-slate-400">
+            <p className="hidden max-w-[13.5rem] truncate text-[11px] text-slate-500 lg:block dark:text-slate-400">
               {sourceLabel}
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-nowrap items-center gap-1.5 lg:gap-2">
+        <div className="order-3 flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 md:order-2 md:w-auto md:shrink md:justify-start lg:gap-2">
           <div className="flex shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
             <button
               type="button"
@@ -136,7 +136,7 @@ export function TopBar({
               }`}
             >
               <Calendar size={13} />
-              <span className="hidden md:inline">Historical</span>
+              <span className="hidden min-[860px]:inline">Historical</span>
             </button>
             <button
               type="button"
@@ -150,7 +150,7 @@ export function TopBar({
               }`}
             >
               <Radio size={13} className={mode === 'live' ? 'animate-pulse text-emerald-500' : ''} />
-              <span className="hidden md:inline">Live</span>
+              <span className="hidden min-[860px]:inline">Live</span>
             </button>
           </div>
 
@@ -159,7 +159,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={() => setDateMenuOpen((v) => !v)}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50 lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1.5 py-1.5 text-xs font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50 sm:px-2 lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Calendar size={13} className="shrink-0 text-sky-500" />
                 <span className="tabular-nums">
@@ -168,7 +168,7 @@ export function TopBar({
               </button>
 
               {dateMenuOpen && (
-                <div className="absolute top-11 left-0 z-50 w-80 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="absolute top-11 -left-16 z-50 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:left-0 dark:border-slate-700 dark:bg-slate-900">
                   <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
                     Curated Archive Events
                   </div>
@@ -231,8 +231,8 @@ export function TopBar({
             </div>
           )}
 
-          <div ref={searchRef} className="relative shrink-0">
-            <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80">
+          <div ref={searchRef} className="relative min-w-0 flex-1 md:flex-initial md:shrink">
+            <div className="flex min-w-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80">
               <Search size={13} className="shrink-0 text-slate-400" />
               <input
                 ref={searchInputRef}
@@ -244,9 +244,9 @@ export function TopBar({
                   setSearchOpen(true);
                 }}
                 placeholder="Find state or city..."
-                className="w-20 bg-transparent text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none lg:w-32 xl:w-40 dark:text-slate-100"
+                className="w-full min-w-0 shrink bg-transparent text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none md:w-20 md:min-w-20 lg:w-28 xl:w-32 min-[1360px]:w-40 dark:text-slate-100"
               />
-              <kbd className="hidden rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-400 xl:inline dark:bg-slate-700">
+              <kbd className="hidden shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-400 xl:inline dark:bg-slate-700">
                 ⌘K
               </kbd>
             </div>
@@ -278,7 +278,7 @@ export function TopBar({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-nowrap items-center gap-1 lg:gap-1.5">
+        <div className="order-2 flex shrink-0 flex-nowrap items-center gap-1 md:order-3 lg:gap-1.5">
           {mode === 'live' && (
             <button
               type="button"
@@ -324,7 +324,7 @@ export function TopBar({
             className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50 lg:px-2.5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {theme === 'light' ? <Moon size={14} /> : <Sun size={14} className="text-amber-400" />}
-            <span className="hidden lg:inline">{theme === 'light' ? 'Dark' : 'Light'}</span>
+            <span className="hidden xl:inline">{theme === 'light' ? 'Dark' : 'Light'}</span>
           </button>
 
           <button
