@@ -7,6 +7,7 @@ const cache = new WeatherCache(process.env.WEATHER_CACHE_DB ?? '.data/weather-ca
 
 const server = Bun.serve({
   port,
+  idleTimeout: 35,
   routes: {
     '/': homepage,
   },

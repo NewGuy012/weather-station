@@ -459,6 +459,7 @@ async function fetchBatchedWeatherAndAq(
       ),
       fetchJson<OpenMeteoAirQualityPayload | OpenMeteoAirQualityPayload[]>(
         `${AIR_QUALITY_BASE}?${aqParams.toString()}`,
+        8_000,
       ).catch(() => null),
     ]);
 
