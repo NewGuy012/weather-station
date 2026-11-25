@@ -18,6 +18,7 @@
     "types": ["bun-types", "./worker-configuration.d.ts"]
   },
   "include": [
+    "src/server/dev.ts",
     "src/server/scripts",
     "tests"
   ]

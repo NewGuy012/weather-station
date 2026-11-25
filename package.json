@@ -5,12 +5,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "tsc -b && vite build && vite preview",
+    "dev": "bun --hot src/server/dev.ts",
+    "build": "tsc -b && bun run src/server/scripts/buildClient.ts",
+    "preview": "bun run build && NODE_ENV=production bun src/server/dev.ts",
     "deploy": "wrangler deploy",
-    "cf-typegen": "wrangler types",
-    "check": "tsc -b && vite build && wrangler deploy --dry-run",
+    "check": "bun run build && wrangler deploy --dry-run",
     "typecheck": "tsc -b",
     "test": "bun test",
     "seed": "bun run src/server/scripts/generateSeed.ts"
@@ -24,17 +23,14 @@
     "us-atlas": "^3.0.1"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.52.1",
-    "@tailwindcss/vite": "^4.1.0",
     "@types/bun": "^1.4.5",
     "@types/d3-geo": "^3.1.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/topojson-client": "^3.1.5",
-    "@vitejs/plugin-react": "^5.1.1",
+    "bun-plugin-tailwind": "^0.1.2",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0",
     "wrangler": "^4.136.1"
   }
 }
