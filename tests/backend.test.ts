@@ -10,7 +10,8 @@ import {
   computeTimelineStride,
   ensureUtcIso,
 } from '../src/server/providers/openMeteo';
-import { buildHistoricalRadarFrames, parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
+import { parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
+import { buildHistoricalRadarFrames } from '../src/shared/radar';
 import { US_STATES } from '../src/shared/states';
 import { degToCompass, fToC, formatTemp } from '../src/shared/units';
 import { getWmoInfo } from '../src/shared/wmoCodes';

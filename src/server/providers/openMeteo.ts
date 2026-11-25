@@ -19,6 +19,7 @@ import { TOP_CITIES_BY_STATE, findStateCity } from '../../shared/topCities';
 const FORECAST_BASE = 'https://api.open-meteo.com/v1/forecast';
 const ARCHIVE_BASE = 'https://archive-api.open-meteo.com/v1/archive';
 const AIR_QUALITY_BASE = 'https://air-quality-api.open-meteo.com/v1/air-quality';
+const AQ_ARCHIVE_START = '2022-08-01';
 
 const CURRENT_WEATHER_FIELDS = [
   'temperature_2m',
@@ -149,8 +150,49 @@ export function computeTimelineStride(totalHours: number): number {
   return 3;
 }
 
-export function normalizeArrayPayload<T>(raw: T | T[]): T[] {
+function normalizeArrayPayload<T>(raw: T | T[]): T[] {
   return Array.isArray(raw) ? raw : [raw];
+}
+
+function extractTimelinePoint(
+  hourly: OpenMeteoLocationPayload['hourly'],
+  idx: number,
+  time: string,
+  tempFallback = 0,
+): TimelinePoint {
+  const tempF = num(hourly?.temperature_2m?.[idx], tempFallback);
+  return {
+    time,
+    temperatureF: tempF,
+    apparentTemperatureF: num(hourly?.apparent_temperature?.[idx], tempF),
+    precipitationMm: num(hourly?.precipitation?.[idx]),
+    windSpeedMph: num(hourly?.wind_speed_10m?.[idx]),
+    windDirectionDeg: num(hourly?.wind_direction_10m?.[idx]),
+    humidity: num(hourly?.relative_humidity_2m?.[idx], 50),
+    weatherCode: num(hourly?.weather_code?.[idx], 0),
+  };
+}
+
+function extractHourlyPoint(
+  hourly: OpenMeteoLocationPayload['hourly'],
+  idx: number,
+  time: string,
+  aqUv?: (number | null)[],
+  tempFallback = 0,
+): HourlyPoint {
+  const base = extractTimelinePoint(hourly, idx, time, tempFallback);
+  return {
+    ...base,
+    dewPointF: num(
+      hourly?.dew_point_2m?.[idx],
+      estimateDewPointF(base.temperatureF, base.humidity),
+    ),
+    precipitationProb: optNum(hourly?.precipitation_probability?.[idx]),
+    windGustMph: optNum(hourly?.wind_gusts_10m?.[idx]),
+    pressureHpa: optNum(hourly?.surface_pressure?.[idx]),
+    cloudCoverPct: optNum(hourly?.cloud_cover?.[idx]),
+    uvIndex: optNum(hourly?.uv_index?.[idx]) ?? optNum(aqUv?.[idx]),
+  };
 }
 
 function findLiveHourIndex(times: string[], currentTime: string | undefined): number {
@@ -256,18 +298,7 @@ function extractLocationSnapshot(
   const timeline: TimelinePoint[] = [];
   for (let h = 0; h < times.length; h += stride) {
     const t = times[h];
-    if (!t) continue;
-    const tempF = num(hourly?.temperature_2m?.[h]);
-    timeline.push({
-      time: ensureUtcIso(t),
-      temperatureF: tempF,
-      apparentTemperatureF: num(hourly?.apparent_temperature?.[h], tempF),
-      precipitationMm: num(hourly?.precipitation?.[h]),
-      windSpeedMph: num(hourly?.wind_speed_10m?.[h]),
-      windDirectionDeg: num(hourly?.wind_direction_10m?.[h]),
-      humidity: num(hourly?.relative_humidity_2m?.[h], 50),
-      weatherCode: num(hourly?.weather_code?.[h], 0),
-    });
+    if (t) timeline.push(extractTimelinePoint(hourly, h, ensureUtcIso(t)));
   }
 
   const repHourIdx =
@@ -281,22 +312,11 @@ function extractLocationSnapshot(
           Math.max(0, times.length - 1),
         );
 
-  const repTemp = num(hourly?.temperature_2m?.[repHourIdx], 60);
-  const repRh = num(hourly?.relative_humidity_2m?.[repHourIdx], 50);
-  const repHour: Partial<HourlyPoint> = {
-    temperatureF: repTemp,
-    apparentTemperatureF: num(hourly?.apparent_temperature?.[repHourIdx], repTemp),
-    dewPointF: num(hourly?.dew_point_2m?.[repHourIdx], estimateDewPointF(repTemp, repRh)),
-    humidity: repRh,
-    precipitationMm: num(hourly?.precipitation?.[repHourIdx]),
-    precipitationProb: optNum(hourly?.precipitation_probability?.[repHourIdx]),
-    windSpeedMph: num(hourly?.wind_speed_10m?.[repHourIdx]),
-    windGustMph: optNum(hourly?.wind_gusts_10m?.[repHourIdx]),
-    windDirectionDeg: num(hourly?.wind_direction_10m?.[repHourIdx]),
-    pressureHpa: optNum(hourly?.surface_pressure?.[repHourIdx]),
-    cloudCoverPct: optNum(hourly?.cloud_cover?.[repHourIdx]),
-    weatherCode: num(hourly?.weather_code?.[repHourIdx], 0),
-  };
+  const repHour =
+    times.length > 0
+      ? extractHourlyPoint(hourly, repHourIdx, times[repHourIdx]!, undefined, 60)
+      : undefined;
+  const repTemp = repHour?.temperatureF ?? 60;
 
   const aqHourIdx = aq?.hourly?.time
     ? Math.min(repHourIdx, Math.max(0, aq.hourly.time.length - 1))
@@ -424,11 +444,11 @@ export function buildCityBatchDataset(
   };
 }
 
-function isoDateDaysAgo(daysAgo: number): string {
+export function isoDateDaysAgo(daysAgo: number): string {
   return new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
 }
 
-function shouldUseArchiveEndpoint(endDate: string): boolean {
+export function shouldUseArchiveEndpoint(endDate: string): boolean {
   return endDate <= isoDateDaysAgo(5);
 }
 
@@ -440,27 +460,67 @@ async function fetchJson<T>(url: string, timeoutMs = 18_000): Promise<T> {
   return (await res.json()) as T;
 }
 
-function buildAqParams(opts: {
+async function fetchOpenMeteoPair<W, A>(opts: {
   latitude: string;
   longitude: string;
   timezone: string;
-  mode: WeatherMode;
+  isHistorical: boolean;
   startDate?: string;
   endDate?: string;
-}): URLSearchParams {
+  hourlyFields: string[];
+  dailyFields: string[];
+  forecastDays: number;
+  weatherTimeoutMs?: number;
+  aqTimeoutMs?: number;
+}): Promise<{ weather: W; aq: A | null; startDate: string; endDate: string }> {
+  const startDate = opts.isHistorical
+    ? opts.startDate ?? isoDateDaysAgo(5)
+    : isoDateDaysAgo(0);
+  const endDate = opts.isHistorical
+    ? opts.endDate ?? isoDateDaysAgo(1)
+    : isoDateDaysAgo(-2);
+  const useArchive = opts.isHistorical && shouldUseArchiveEndpoint(endDate);
+  const baseUrl = useArchive ? ARCHIVE_BASE : FORECAST_BASE;
+
   const params = new URLSearchParams({
+    latitude: opts.latitude,
+    longitude: opts.longitude,
+    hourly: opts.hourlyFields.join(','),
+    daily: opts.dailyFields.join(','),
+    temperature_unit: 'fahrenheit',
+    wind_speed_unit: 'mph',
+    timezone: opts.timezone,
+  });
+  if (opts.isHistorical) {
+    params.set('start_date', startDate);
+    params.set('end_date', endDate);
+  } else {
+    params.set('current', CURRENT_WEATHER_FIELDS.join(','));
+    params.set('forecast_days', String(opts.forecastDays));
+  }
+
+  const canQueryAq = !opts.isHistorical || startDate >= AQ_ARCHIVE_START;
+  const aqParams = new URLSearchParams({
     latitude: opts.latitude,
     longitude: opts.longitude,
     timezone: opts.timezone,
   });
-  if (opts.mode === 'live') {
-    params.set('current', 'us_aqi,pm2_5,uv_index');
+  if (!opts.isHistorical) {
+    aqParams.set('current', 'us_aqi,pm2_5,uv_index');
   } else {
-    if (opts.startDate) params.set('start_date', opts.startDate);
-    if (opts.endDate) params.set('end_date', opts.endDate);
-    params.set('hourly', 'us_aqi,pm2_5,uv_index');
+    aqParams.set('start_date', startDate);
+    aqParams.set('end_date', endDate);
+    aqParams.set('hourly', 'us_aqi,pm2_5,uv_index');
   }
-  return params;
+
+  const [weather, aq] = await Promise.all([
+    fetchJson<W>(`${baseUrl}?${params.toString()}`, opts.weatherTimeoutMs),
+    canQueryAq
+      ? fetchJson<A>(`${AIR_QUALITY_BASE}?${aqParams.toString()}`, opts.aqTimeoutMs).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  return { weather, aq, startDate, endDate };
 }
 
 async function fetchBatchedWeatherAndAq(
@@ -478,69 +538,31 @@ async function fetchBatchedWeatherAndAq(
   endDate: string;
 }> {
   const precision = opts.precision ?? 2;
-  const lats = coords.map((c) => c.lat.toFixed(precision)).join(',');
-  const lons = coords.map((c) => c.lon.toFixed(precision)).join(',');
-  const isLive = opts.mode === 'live';
-
-  const startDate = isLive ? isoDateDaysAgo(0) : opts.startDate ?? isoDateDaysAgo(5);
-  const endDate = isLive ? isoDateDaysAgo(-2) : opts.endDate ?? isoDateDaysAgo(1);
-  const baseUrl = isLive
-    ? FORECAST_BASE
-    : shouldUseArchiveEndpoint(endDate)
-      ? ARCHIVE_BASE
-      : FORECAST_BASE;
-
-  const params = new URLSearchParams({
-    latitude: lats,
-    longitude: lons,
-    hourly: (isLive
-      ? [...HOURLY_BASE_FIELDS, 'precipitation_probability']
-      : HOURLY_BASE_FIELDS
-    ).join(','),
-    daily: (isLive
-      ? [...DAILY_BASE_FIELDS, 'uv_index_max']
-      : [...DAILY_BASE_FIELDS, 'wind_speed_10m_max', 'wind_direction_10m_dominant']
-    ).join(','),
-    temperature_unit: 'fahrenheit',
-    wind_speed_unit: 'mph',
+  const isHistorical = opts.mode === 'historical';
+  const { weather, aq, startDate, endDate } = await fetchOpenMeteoPair<
+    OpenMeteoLocationPayload | OpenMeteoLocationPayload[],
+    OpenMeteoAirQualityPayload | OpenMeteoAirQualityPayload[]
+  >({
+    latitude: coords.map((c) => c.lat.toFixed(precision)).join(','),
+    longitude: coords.map((c) => c.lon.toFixed(precision)).join(','),
     timezone: 'UTC',
+    isHistorical,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    hourlyFields: isHistorical
+      ? HOURLY_BASE_FIELDS
+      : [...HOURLY_BASE_FIELDS, 'precipitation_probability'],
+    dailyFields: isHistorical
+      ? [...DAILY_BASE_FIELDS, 'wind_speed_10m_max', 'wind_direction_10m_dominant']
+      : [...DAILY_BASE_FIELDS, 'uv_index_max'],
+    forecastDays: 3,
+    weatherTimeoutMs: isHistorical ? 25_000 : 18_000,
+    aqTimeoutMs: isHistorical ? 15_000 : 8_000,
   });
-
-  if (isLive) {
-    params.set('current', CURRENT_WEATHER_FIELDS.join(','));
-    params.set('forecast_days', '3');
-  } else {
-    params.set('start_date', startDate);
-    params.set('end_date', endDate);
-  }
-
-  // Air quality archive starts ~2022-08
-  const canQueryAq = isLive || startDate >= '2022-08-01';
-  const aqParams = buildAqParams({
-    latitude: lats,
-    longitude: lons,
-    timezone: 'UTC',
-    mode: opts.mode,
-    startDate,
-    endDate,
-  });
-
-  const [weatherRaw, aqResult] = await Promise.all([
-    fetchJson<OpenMeteoLocationPayload | OpenMeteoLocationPayload[]>(
-      `${baseUrl}?${params.toString()}`,
-      isLive ? 18_000 : 25_000,
-    ),
-    canQueryAq
-      ? fetchJson<OpenMeteoAirQualityPayload | OpenMeteoAirQualityPayload[]>(
-          `${AIR_QUALITY_BASE}?${aqParams.toString()}`,
-          isLive ? 8_000 : 15_000,
-        ).catch(() => null)
-      : Promise.resolve(null),
-  ]);
 
   return {
-    locations: normalizeArrayPayload(weatherRaw),
-    aqLocations: aqResult ? normalizeArrayPayload(aqResult) : coords.map(() => null),
+    locations: normalizeArrayPayload(weather),
+    aqLocations: aq ? normalizeArrayPayload(aq) : coords.map(() => null),
     startDate,
     endDate,
   };
@@ -627,80 +649,34 @@ export async function fetchStateDetail(opts: {
 
   const isHistorical = opts.mode === 'historical' && Boolean(opts.startDate && opts.endDate);
   const useArchive = isHistorical && shouldUseArchiveEndpoint(opts.endDate!);
-  const baseUrl = useArchive ? ARCHIVE_BASE : FORECAST_BASE;
 
-  const latStr = cityObj.lat.toFixed(4);
-  const lonStr = cityObj.lon.toFixed(4);
-
-  const params = new URLSearchParams({
-    latitude: latStr,
-    longitude: lonStr,
-    hourly: (useArchive
+  const { weather: weatherData, aq: aqData } = await fetchOpenMeteoPair<
+    OpenMeteoLocationPayload,
+    OpenMeteoAirQualityPayload
+  >({
+    latitude: cityObj.lat.toFixed(4),
+    longitude: cityObj.lon.toFixed(4),
+    timezone: 'auto',
+    isHistorical,
+    startDate: opts.startDate,
+    endDate: opts.endDate,
+    hourlyFields: useArchive
       ? HOURLY_BASE_FIELDS
-      : [...HOURLY_BASE_FIELDS, 'precipitation_probability', 'uv_index']
-    ).join(','),
-    daily: [
+      : [...HOURLY_BASE_FIELDS, 'precipitation_probability', 'uv_index'],
+    dailyFields: [
       ...DAILY_BASE_FIELDS,
       ...(useArchive ? [] : ['precipitation_probability_max', 'uv_index_max']),
       'wind_speed_10m_max',
       'wind_direction_10m_dominant',
-    ].join(','),
-    temperature_unit: 'fahrenheit',
-    wind_speed_unit: 'mph',
-    timezone: 'auto',
+    ],
+    forecastDays: 7,
   });
-
-  if (isHistorical) {
-    params.set('start_date', opts.startDate!);
-    params.set('end_date', opts.endDate!);
-  } else {
-    params.set('current', CURRENT_WEATHER_FIELDS.join(','));
-    params.set('forecast_days', '7');
-  }
-
-  const canQueryAq = !isHistorical || (opts.startDate ?? '') >= '2022-08-01';
-  const aqParams = buildAqParams({
-    latitude: latStr,
-    longitude: lonStr,
-    timezone: 'auto',
-    mode: isHistorical ? 'historical' : 'live',
-    startDate: opts.startDate,
-    endDate: opts.endDate,
-  });
-
-  const [weatherData, aqData] = await Promise.all([
-    fetchJson<OpenMeteoLocationPayload>(`${baseUrl}?${params.toString()}`),
-    canQueryAq
-      ? fetchJson<OpenMeteoAirQualityPayload>(`${AIR_QUALITY_BASE}?${aqParams.toString()}`).catch(
-          () => null,
-        )
-      : Promise.resolve(null),
-  ]);
 
   const hourlyRaw = weatherData.hourly;
   const dailyRaw = weatherData.daily;
   const hTimes = hourlyRaw?.time ?? [];
-
-  const hourly: HourlyPoint[] = hTimes.map((t, idx) => {
-    const tempF = num(hourlyRaw?.temperature_2m?.[idx]);
-    const rh = num(hourlyRaw?.relative_humidity_2m?.[idx], 50);
-    return {
-      time: t,
-      temperatureF: tempF,
-      apparentTemperatureF: num(hourlyRaw?.apparent_temperature?.[idx], tempF),
-      dewPointF: num(hourlyRaw?.dew_point_2m?.[idx], estimateDewPointF(tempF, rh)),
-      humidity: rh,
-      precipitationMm: num(hourlyRaw?.precipitation?.[idx]),
-      precipitationProb: optNum(hourlyRaw?.precipitation_probability?.[idx]),
-      windSpeedMph: num(hourlyRaw?.wind_speed_10m?.[idx]),
-      windGustMph: optNum(hourlyRaw?.wind_gusts_10m?.[idx]),
-      windDirectionDeg: num(hourlyRaw?.wind_direction_10m?.[idx]),
-      pressureHpa: optNum(hourlyRaw?.surface_pressure?.[idx]),
-      cloudCoverPct: optNum(hourlyRaw?.cloud_cover?.[idx]),
-      uvIndex: optNum(hourlyRaw?.uv_index?.[idx]) ?? optNum(aqData?.hourly?.uv_index?.[idx]),
-      weatherCode: num(hourlyRaw?.weather_code?.[idx], 0),
-    };
-  });
+  const aqUv = aqData?.hourly?.uv_index;
+  const hourly: HourlyPoint[] = hTimes.map((t, idx) => extractHourlyPoint(hourlyRaw, idx, t, aqUv));
 
   const dTimes = dailyRaw?.time ?? [];
   const daily: DailyPoint[] = dTimes.map((date, idx) => ({

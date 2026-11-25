@@ -1,21 +1,16 @@
-import { RADAR_BBOX_4326, type RadarRegion } from '../../shared/radar';
+import { RADAR_BBOX_4326, type RadarRegion, formatRadarFrameLabel } from '../../shared/radar';
 import type { RadarFrame, RadarFramesResponse, WeatherMode } from '../../shared/types';
-
-export { RADAR_BBOX_4326, type RadarRegion };
 
 const NOAA_CAPS_URL =
   'https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/wms?service=WMS&request=GetCapabilities';
-const MAX_RADAR_PNG_BYTES = 5 * 1024 * 1024;
+const MAX_RADAR_PNG_BYTES = 2 * 1024 * 1024;
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-function formatFrameLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  }) + ' UTC';
+export function isValidPngBytes(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < PNG_SIGNATURE.length || bytes.byteLength > MAX_RADAR_PNG_BYTES) {
+    return false;
+  }
+  return PNG_SIGNATURE.every((b, idx) => bytes[idx] === b);
 }
 
 export function parseNoaaCapabilitiesTimes(xml: string, maxFrames = 12): string[] {
@@ -28,7 +23,6 @@ export function parseNoaaCapabilitiesTimes(xml: string, maxFrames = 12): string[
 
   if (rawList.length <= maxFrames) return rawList;
 
-  // Pick evenly spaced frames across the last ~60 minutes (tail of capabilities list)
   const recent = rawList.slice(-Math.min(rawList.length, 30));
   const selected: string[] = [];
   const step = Math.max(1, (recent.length - 1) / (maxFrames - 1));
@@ -55,7 +49,7 @@ export async function fetchLiveRadarFrames(): Promise<RadarFramesResponse> {
           frames: times.map((ts, idx) => ({
             id: `live-${idx}-${ts}`,
             timestamp: ts,
-            label: formatFrameLabel(ts),
+            label: formatRadarFrameLabel(ts),
             source: 'noaa-mrms',
             hasAlaska: true,
             hasHawaii: true,
@@ -64,7 +58,7 @@ export async function fetchLiveRadarFrames(): Promise<RadarFramesResponse> {
       }
     }
   } catch {
-    // Fallback to synthetic 5-minute UTC steps below
+    // Fall back to synthetic 5-minute UTC steps below
   }
 
   const now = Math.floor(Date.now() / 300_000) * 300_000 - 300_000;
@@ -74,7 +68,7 @@ export async function fetchLiveRadarFrames(): Promise<RadarFramesResponse> {
     frames.push({
       id: `live-fallback-${i}`,
       timestamp: ts,
-      label: formatFrameLabel(ts),
+      label: formatRadarFrameLabel(ts),
       source: 'noaa-mrms',
       hasAlaska: true,
       hasHawaii: true,
@@ -83,35 +77,7 @@ export async function fetchLiveRadarFrames(): Promise<RadarFramesResponse> {
   return { mode: 'live', source: 'noaa-mrms', frames };
 }
 
-export function buildHistoricalRadarFrames(anchorIso: string, count = 12): RadarFramesResponse {
-  const parsed = Date.parse(anchorIso.endsWith('Z') ? anchorIso : `${anchorIso}Z`);
-  const anchorMs = Number.isNaN(parsed)
-    ? Date.now() - 5 * 86_400_000
-    : Math.floor(parsed / 300_000) * 300_000;
-
-  // Build 12 frames spanning 3 hours leading up to anchor time (15-min intervals for clear front movement)
-  const intervalMs = 15 * 60_000;
-  const frames: RadarFrame[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const ts = new Date(anchorMs - i * intervalMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    frames.push({
-      id: `hist-${ts}`,
-      timestamp: ts,
-      label: formatFrameLabel(ts),
-      source: 'iem-historical',
-      hasAlaska: false,
-      hasHawaii: false,
-    });
-  }
-
-  return {
-    mode: 'historical',
-    source: 'iem-historical',
-    frames,
-  };
-}
-
-export function buildUpstreamRadarUrl(opts: {
+function buildUpstreamRadarUrl(opts: {
   mode: WeatherMode;
   region: RadarRegion;
   timestamp: string;
@@ -141,7 +107,7 @@ export function buildUpstreamRadarUrl(opts: {
     hawaii: { workspace: 'hawaii', layer: 'hawaii_bref_qcd' },
   };
   const target = layerMap[opts.region];
-  // WMS 1.3.0 with EPSG:4326 expects lat-lon axis ordering: minLat,minLon,maxLat,maxLon
+  // WMS 1.3.0 with EPSG:4326 uses lat-lon axis ordering
   const params = new URLSearchParams({
     service: 'WMS',
     version: '1.3.0',
@@ -176,5 +142,5 @@ export async function fetchRadarImagePng(opts: {
   if (Number.isFinite(declaredLen) && declaredLen > MAX_RADAR_PNG_BYTES) return null;
 
   const bytes = new Uint8Array(await res.arrayBuffer());
-  return bytes.byteLength <= MAX_RADAR_PNG_BYTES ? bytes : null;
+  return isValidPngBytes(bytes) ? bytes : null;
 }

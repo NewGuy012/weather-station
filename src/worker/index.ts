@@ -7,7 +7,16 @@ export default {
     const response = await handleApiRequest(request, cache);
     return (
       response ??
-      Response.json({ error: `Unknown endpoint: ${new URL(request.url).pathname}` }, { status: 404 })
+      Response.json(
+        { error: 'Unknown endpoint' },
+        {
+          status: 404,
+          headers: {
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'no-store',
+          },
+        },
+      )
     );
   },
 };

@@ -45,11 +45,11 @@ function normalizeSeverity(sev: string | undefined): WeatherAlert['severity'] {
   }
 }
 
-export function extractAlertStates(ugcList: string[] | undefined): string[] {
-  if (!ugcList || ugcList.length === 0) return [];
+function extractAlertStates(ugcList: string[] | undefined): string[] {
+  if (!Array.isArray(ugcList) || ugcList.length === 0) return [];
   const found = new Set<string>();
   for (const ugc of ugcList) {
-    const prefix = ugc.slice(0, 2).toUpperCase();
+    const prefix = String(ugc).slice(0, 2).toUpperCase();
     if (STATE_BY_CODE[prefix]) {
       found.add(prefix);
     }
@@ -61,8 +61,9 @@ export function parseNwsAlerts(raw: NwsResponse): AlertsResponse {
   const byState: Record<string, WeatherAlert[]> = {};
   const polygonFeatures: GeoJsonFeature[] = [];
   const seenAlertIds = new Set<string>();
+  const features = Array.isArray(raw?.features) ? raw.features : [];
 
-  for (const feat of raw.features ?? []) {
+  for (const feat of features) {
     const props = feat.properties;
     if (!props || !props.event) continue;
 

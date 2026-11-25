@@ -38,18 +38,38 @@ interface MemoryEntry<T> {
 }
 
 const MAX_MEMORY_ENTRIES = 32;
+const MAX_BLOB_MEMORY_BYTES = 16 * 1024 * 1024;
 const HISTORICAL_EDGE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const memoryJsonCache = new Map<string, MemoryEntry<unknown>>();
 const memoryBlobCache = new Map<string, MemoryEntry<Uint8Array>>();
+let memoryBlobBytes = 0;
 
-function setBounded<T>(map: Map<string, T>, key: string, value: T): void {
+function setBoundedJson(map: Map<string, MemoryEntry<unknown>>, key: string, value: MemoryEntry<unknown>): void {
   if (map.has(key)) map.delete(key);
   map.set(key, value);
   while (map.size > MAX_MEMORY_ENTRIES) {
     const oldestKey = map.keys().next().value;
     if (oldestKey === undefined) break;
     map.delete(oldestKey);
+  }
+}
+
+function setBoundedBlob(key: string, entry: MemoryEntry<Uint8Array>): void {
+  const existing = memoryBlobCache.get(key);
+  if (existing) {
+    memoryBlobBytes -= existing.value.byteLength;
+    memoryBlobCache.delete(key);
+  }
+  if (entry.value.byteLength > MAX_BLOB_MEMORY_BYTES) return;
+  memoryBlobCache.set(key, entry);
+  memoryBlobBytes += entry.value.byteLength;
+  while (memoryBlobCache.size > MAX_MEMORY_ENTRIES || memoryBlobBytes > MAX_BLOB_MEMORY_BYTES) {
+    const oldestKey = memoryBlobCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const old = memoryBlobCache.get(oldestKey);
+    if (old) memoryBlobBytes -= old.value.byteLength;
+    memoryBlobCache.delete(oldestKey);
   }
 }
 
@@ -68,6 +88,7 @@ function makeCacheRequest(kind: 'json' | 'blob', key: string): Request {
 export function clearWorkerMemoryCache(): void {
   memoryJsonCache.clear();
   memoryBlobCache.clear();
+  memoryBlobBytes = 0;
 }
 
 export interface WaitUntilContext {
@@ -87,6 +108,7 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     const memHit = map.get(key);
     if (memHit) {
       if (memHit.expiresAt !== null && memHit.expiresAt <= now) {
+        if (kind === 'blob') memoryBlobBytes -= (memHit.value as unknown as Uint8Array).byteLength;
         map.delete(key);
       } else {
         return memHit;
@@ -114,7 +136,11 @@ export class WorkerWeatherCache implements WeatherCacheStore {
         createdAt: Number.isFinite(createdAt) ? createdAt : now,
         expiresAt,
       };
-      setBounded(map, key, entry);
+      if (kind === 'blob') {
+        setBoundedBlob(key, entry as unknown as MemoryEntry<Uint8Array>);
+      } else {
+        setBoundedJson(map as Map<string, MemoryEntry<unknown>>, key, entry as MemoryEntry<unknown>);
+      }
       return entry;
     } catch {
       return null;
@@ -123,7 +149,6 @@ export class WorkerWeatherCache implements WeatherCacheStore {
 
   private async setEntry<T>(
     kind: 'json' | 'blob',
-    map: Map<string, MemoryEntry<T>>,
     key: string,
     value: T,
     contentType: string,
@@ -132,7 +157,12 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     now: number,
   ): Promise<void> {
     const expiresAt = ttlMs === null ? null : now + ttlMs;
-    setBounded(map, key, { value, contentType, createdAt: now, expiresAt });
+    const entry = { value, contentType, createdAt: now, expiresAt };
+    if (kind === 'blob') {
+      setBoundedBlob(key, entry as unknown as MemoryEntry<Uint8Array>);
+    } else {
+      setBoundedJson(memoryJsonCache, key, entry as MemoryEntry<unknown>);
+    }
 
     const edgeCache = getDefaultEdgeCache();
     if (!edgeCache) return;
@@ -168,7 +198,6 @@ export class WorkerWeatherCache implements WeatherCacheStore {
   async setJson<T>(key: string, value: T, ttlMs: number | null, now = Date.now()): Promise<void> {
     await this.setEntry(
       'json',
-      memoryJsonCache,
       key,
       value,
       'application/json; charset=utf-8',
@@ -198,16 +227,7 @@ export class WorkerWeatherCache implements WeatherCacheStore {
     now = Date.now(),
   ): Promise<void> {
     const copy = new Uint8Array(data);
-    await this.setEntry(
-      'blob',
-      memoryBlobCache,
-      key,
-      copy,
-      contentType,
-      new Uint8Array(copy),
-      ttlMs,
-      now,
-    );
+    await this.setEntry('blob', key, copy, contentType, copy, ttlMs, now);
   }
 
   stats(): CacheStats {
