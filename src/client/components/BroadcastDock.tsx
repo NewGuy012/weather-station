@@ -1,4 +1,4 @@
-import { CloudRain, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
+import { CloudRain, Eye, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
 import type { RadarFrame, WeatherMode } from '../../shared/types';
 import type { WeatherFxIntensity } from '../../shared/weatherPhenomena';
 
@@ -23,6 +23,8 @@ interface BroadcastDockProps {
   showWeatherFx?: boolean;
   fxIntensity?: WeatherFxIntensity;
   onFxIntensityChange?: (intensity: WeatherFxIntensity) => void;
+  showWeatherBadges?: boolean;
+  onToggleWeatherBadges?: () => void;
   fxShowcase?: boolean;
   onToggleFxShowcase?: () => void;
   activeFxCount?: number;
@@ -65,6 +67,8 @@ export function BroadcastDock({
   showWeatherFx = false,
   fxIntensity = 'normal',
   onFxIntensityChange,
+  showWeatherBadges = true,
+  onToggleWeatherBadges,
   fxShowcase = false,
   onToggleFxShowcase,
   activeFxCount = 0,
@@ -122,6 +126,23 @@ export function BroadcastDock({
                     </button>
                   ))}
                 </div>
+              )}
+
+              {onToggleWeatherBadges && (
+                <button
+                  type="button"
+                  onClick={onToggleWeatherBadges}
+                  aria-pressed={showWeatherBadges}
+                  title="Show animated condition icons next to active states"
+                  className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition ${
+                    showWeatherBadges
+                      ? 'bg-indigo-600 text-white shadow-xs dark:bg-indigo-500 dark:text-slate-950'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Eye size={11} />
+                  <span>Icons</span>
+                </button>
               )}
 
               {onToggleFxShowcase && (

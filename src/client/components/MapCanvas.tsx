@@ -40,6 +40,13 @@ import {
   resolveStateSlice,
 } from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
+import { WeatherGlyph } from './WeatherIcon';
+import {
+  type WeatherPhenomenon,
+  buildShowcasePhenomena,
+  classifyWeatherPhenomenon,
+  hasActiveMapFx,
+} from '../../shared/weatherPhenomena';
 import { geoPath } from 'd3-geo';
 
 interface MapCanvasProps {
@@ -71,6 +78,8 @@ interface MapCanvasProps {
   /** Whether animated Weather FX are active (adds subtle alert pulse & enables 'A' shortcut) */
   showWeatherFx?: boolean;
   onToggleWeatherFx?: () => void;
+  showWeatherBadges?: boolean;
+  fxShowcase?: boolean;
   /** Called when map zoom factor changes */
   onZoomChange?: (zoom: number) => void;
   /** Incrementing counter to reset pan and zoom back to the default view */
@@ -106,6 +115,8 @@ export function MapCanvas({
   overlays,
   showWeatherFx = false,
   onToggleWeatherFx,
+  showWeatherBadges = true,
+  fxShowcase = false,
   onZoomChange,
   resetTrigger,
   onViewModifiedChange,
@@ -120,9 +131,16 @@ export function MapCanvas({
   );
   const stateVisuals = useMemo(() => {
     const fallbackFill = isDark ? 'rgb(30, 41, 59)' : 'rgb(226, 232, 240)';
+    const showcaseMap = showWeatherFx && fxShowcase ? buildShowcasePhenomena(states) : null;
     const byCode: Record<
       string,
-      { slice: ResolvedStateSlice; displayVal: string; fill: string; lightFill: boolean }
+      {
+        slice: ResolvedStateSlice;
+        displayVal: string;
+        fill: string;
+        lightFill: boolean;
+        phenomenon: WeatherPhenomenon;
+      }
     > = {};
     for (const item of geometries) {
       const snap = states[item.meta.code];
@@ -130,15 +148,48 @@ export function MapCanvas({
       const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
       const rawMetric = resolveMetricValue(scaleConfig, snap.current, slice);
       const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
+      const phenom = showcaseMap
+        ? showcaseMap[item.meta.code]!
+        : classifyWeatherPhenomenon(
+            {
+              weatherCode: slice.weatherCode,
+              precipitationMm: slice.precipitationMm,
+              temperatureF: slice.temperatureF,
+              apparentTemperatureF: slice.apparentTemperatureF,
+              windSpeedMph: slice.windSpeedMph,
+              windDirectionDeg: slice.windDirectionDeg,
+              humidity: slice.humidity,
+              uvIndex: snap.current.uvIndex,
+              usAqi: snap.current.usAqi,
+              cloudCoverPct: snap.current.cloudCoverPct,
+            },
+            alertsByState[item.meta.code],
+            metric,
+          );
       byCode[item.meta.code] = {
         slice,
         displayVal: scaleConfig.formatMapValue(rawMetric, unit),
         fill: fill || fallbackFill,
         lightFill: isColorLight(fill),
+        phenomenon: phenom.phenomenon,
       };
     }
     return byCode;
-  }, [geometries, states, timelineIndex, useTimeline, scaleConfig, activeStops, unit, isDark, calmZero]);
+  }, [
+    geometries,
+    states,
+    timelineIndex,
+    useTimeline,
+    scaleConfig,
+    activeStops,
+    unit,
+    isDark,
+    calmZero,
+    showWeatherFx,
+    fxShowcase,
+    alertsByState,
+    metric,
+  ]);
 
   const [hovered, setHovered] = useState<{ code: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<MapViewState>(INITIAL_MAP_VIEW);
@@ -718,10 +769,15 @@ export function MapCanvas({
             const visual = stateVisuals[item.meta.code];
             if (!visual) return null;
 
-            const { displayVal, lightFill } = visual;
+            const { displayVal, lightFill, phenomenon } = visual;
             const isCompact = Boolean(item.meta.labelOffset);
             const hasAlerts = (alertsByState[item.meta.code]?.length ?? 0) > 0;
             const isSelected = selectedCode === item.meta.code;
+            const showBadge =
+              showWeatherFx &&
+              showWeatherBadges &&
+              phenomenon !== 'cloudy' &&
+              hasActiveMapFx(phenomenon, metric);
 
             const [cx, cy] = item.centroid;
             const [lx, ly] = item.labelPoint;
@@ -765,9 +821,19 @@ export function MapCanvas({
                     >
                       {item.meta.code} {displayVal}
                     </text>
+                    {showBadge && (
+                      <g transform="translate(23, -6) scale(0.46)">
+                        <WeatherGlyph phenomenon={phenomenon} animated />
+                      </g>
+                    )}
                   </g>
                 ) : (
                   <g transform={`translate(${lx}, ${ly})`}>
+                    {showBadge && (
+                      <g transform="translate(-6, -21.5) scale(0.5)">
+                        <WeatherGlyph phenomenon={phenomenon} animated />
+                      </g>
+                    )}
                     <text
                       textAnchor="middle"
                       y={-2}

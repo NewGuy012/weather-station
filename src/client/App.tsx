@@ -129,6 +129,7 @@ export function App() {
   const [showWind, setShowWind] = useState(false);
   const [showWeatherFx, setShowWeatherFx] = useState(false);
   const [fxIntensity, setFxIntensity] = useState<WeatherFxIntensity>('normal');
+  const [showWeatherBadges, setShowWeatherBadges] = useState(true);
   const [fxShowcase, setFxShowcase] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [showAlertPolygons, setShowAlertPolygons] = useState(true);
@@ -548,6 +549,8 @@ export function App() {
             onZoomChange={setMapZoom}
             showWeatherFx={showWeatherFx}
             onToggleWeatherFx={handleToggleWeatherFx}
+            showWeatherBadges={showWeatherBadges}
+            fxShowcase={fxShowcase}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -675,6 +678,8 @@ export function App() {
           showWeatherFx={showWeatherFx}
           fxIntensity={fxIntensity}
           onFxIntensityChange={setFxIntensity}
+          showWeatherBadges={showWeatherBadges}
+          onToggleWeatherBadges={() => setShowWeatherBadges((v) => !v)}
           fxShowcase={fxShowcase}
           onToggleFxShowcase={() => setFxShowcase((v) => !v)}
           activeFxCount={activeFxCount}

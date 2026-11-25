@@ -39,8 +39,247 @@ body,
   animation: ws-alert-pulse 2.2s ease-in-out infinite;
 }
 
+@keyframes ws-cloud-float {
+  0%,
+  100% {
+    transform: translateX(-0.7px);
+  }
+  50% {
+    transform: translateX(0.7px);
+  }
+}
+
+@keyframes ws-rain-fall {
+  0% {
+    transform: translate(0px, -2.5px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-1.6px, 4.5px);
+    opacity: 0;
+  }
+}
+
+@keyframes ws-blizzard-blow {
+  0% {
+    transform: translate(-3px, -1px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(4px, 2.2px);
+    opacity: 0;
+  }
+}
+
+@keyframes ws-snow-drift {
+  0% {
+    transform: translate(-1px, -2px) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(1.2px, 1.5px) rotate(90deg);
+  }
+  100% {
+    transform: translate(-0.8px, 4.8px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+@keyframes ws-hail-bounce {
+  0% {
+    transform: translateY(-3px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  65% {
+    transform: translateY(3.4px);
+    opacity: 1;
+  }
+  82% {
+    transform: translateY(1.1px);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(3.5px);
+    opacity: 0;
+  }
+}
+
+@keyframes ws-lightning-flash {
+  0%,
+  52%,
+  100% {
+    opacity: 0.25;
+  }
+  56% {
+    opacity: 1;
+  }
+  61% {
+    opacity: 0.3;
+  }
+  66% {
+    opacity: 0.98;
+  }
+  78% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes ws-sheet-flash {
+  0%,
+  54%,
+  100% {
+    opacity: 0;
+  }
+  58% {
+    opacity: 0.45;
+  }
+  65% {
+    opacity: 0.32;
+  }
+  78% {
+    opacity: 0;
+  }
+}
+
+@keyframes ws-fog-slide {
+  0%,
+  100% {
+    transform: translateX(-1.5px);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateX(1.5px);
+    opacity: 0.95;
+  }
+}
+
+@keyframes ws-sun-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ws-vortex-spin {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes ws-glint-pulse {
+  0%,
+  100% {
+    transform: scale(0.75);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@keyframes ws-heat-wave {
+  0%,
+  100% {
+    transform: translateY(1.5px);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 0.95;
+  }
+}
+
+.ws-anim-cloud {
+  animation: ws-cloud-float 3.4s ease-in-out infinite;
+}
+
+.ws-anim-rain {
+  animation: ws-rain-fall 1.05s linear infinite;
+}
+
+.ws-anim-blizzard {
+  animation: ws-blizzard-blow 0.8s linear infinite;
+}
+
+.ws-anim-snow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ws-snow-drift 2.3s ease-in-out infinite;
+}
+
+.ws-anim-hail {
+  animation: ws-hail-bounce 1.15s ease-in infinite;
+}
+
+.ws-anim-lightning {
+  animation: ws-lightning-flash 2.6s ease-in-out infinite;
+}
+
+.ws-anim-sheet-flash {
+  animation: ws-sheet-flash 3.2s ease-in-out infinite;
+}
+
+.ws-anim-fog {
+  animation: ws-fog-slide 3.2s ease-in-out infinite;
+}
+
+.ws-anim-sun {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ws-sun-spin 14s linear infinite;
+}
+
+.ws-anim-vortex {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ws-vortex-spin 2.8s linear infinite;
+}
+
+.ws-anim-glint {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ws-glint-pulse 1.8s ease-in-out infinite;
+}
+
+.ws-anim-heat {
+  animation: ws-heat-wave 1.9s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .ws-alert-pulse {
+  .ws-alert-pulse,
+  .ws-anim-cloud,
+  .ws-anim-rain,
+  .ws-anim-blizzard,
+  .ws-anim-snow,
+  .ws-anim-hail,
+  .ws-anim-lightning,
+  .ws-anim-sheet-flash,
+  .ws-anim-fog,
+  .ws-anim-sun,
+  .ws-anim-vortex,
+  .ws-anim-glint,
+  .ws-anim-heat {
     animation: none !important;
   }
 }

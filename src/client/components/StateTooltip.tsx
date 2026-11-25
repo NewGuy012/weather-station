@@ -1,6 +1,7 @@
 import { AlertTriangle, Droplets, MapPin, Wind, X } from 'lucide-react';
 import type { StateWeatherSnapshot, TempUnit, WeatherAlert } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
+import { classifyWeatherPhenomenon } from '../../shared/weatherPhenomena';
 import { getWmoInfo } from '../../shared/wmoCodes';
 import type { ResolvedStateSlice } from '../utils/scales';
 import { WeatherIcon } from './WeatherIcon';
@@ -25,6 +26,18 @@ export function HoverTooltip({
   panActive = false,
 }: HoverTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
+  const phenom = classifyWeatherPhenomenon(
+    {
+      weatherCode: slice.weatherCode,
+      precipitationMm: slice.precipitationMm,
+      temperatureF: slice.temperatureF,
+      apparentTemperatureF: slice.apparentTemperatureF,
+      windSpeedMph: slice.windSpeedMph,
+      windDirectionDeg: slice.windDirectionDeg,
+      humidity: slice.humidity,
+    },
+    alerts,
+  );
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
 
@@ -49,7 +62,7 @@ export function HoverTooltip({
           <p className="text-[11px] text-slate-500 dark:text-slate-400">{snapshot.city}</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={slice.weatherCode} size={18} />
+          <WeatherIcon code={slice.weatherCode} phenomenon={phenom.phenomenon} size={20} animated />
           <span className="tabular-nums text-lg font-semibold text-slate-900 dark:text-white">
             {formatTemp(slice.temperatureF, unit)}
           </span>
@@ -115,6 +128,18 @@ export function PinnedStateTooltip({
   onClose,
 }: PinnedStateTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
+  const phenom = classifyWeatherPhenomenon(
+    {
+      weatherCode: slice.weatherCode,
+      precipitationMm: slice.precipitationMm,
+      temperatureF: slice.temperatureF,
+      apparentTemperatureF: slice.apparentTemperatureF,
+      windSpeedMph: slice.windSpeedMph,
+      windDirectionDeg: slice.windDirectionDeg,
+      humidity: slice.humidity,
+    },
+    alerts,
+  );
   const leftPct = (svgX / mapWidth) * 100;
   const topPct = (svgY / mapHeight) * 100;
   const placeLeft = leftPct > 65;
@@ -152,7 +177,7 @@ export function PinnedStateTooltip({
 
       <div className="mt-1 flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={slice.weatherCode} size={16} />
+          <WeatherIcon code={slice.weatherCode} phenomenon={phenom.phenomenon} size={18} animated />
           <span className="tabular-nums text-base font-bold text-slate-900 dark:text-white">
             {formatTemp(slice.temperatureF, unit, true)}
           </span>

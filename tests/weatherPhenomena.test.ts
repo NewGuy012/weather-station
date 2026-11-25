@@ -5,6 +5,7 @@ import { BroadcastDock } from '../src/client/components/BroadcastDock';
 import { MapCanvas } from '../src/client/components/MapCanvas';
 import { MetricToolbar } from '../src/client/components/MetricToolbar';
 import { WeatherEffectsOverlay } from '../src/client/components/WeatherEffectsOverlay';
+import { WeatherIcon } from '../src/client/components/WeatherIcon';
 import seedHistorical from '../src/server/data/seedHistorical.json';
 import type { WeatherAlert, WeatherDatasetResponse } from '../src/shared/types';
 import {
@@ -381,5 +382,48 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
       }),
     );
     expect(mapWithPulseHtml).toContain('ws-alert-pulse');
+  });
+
+  test('renders custom animated WeatherIcon SVGs and MapCanvas condition badges', () => {
+    const rainSvg = renderToStaticMarkup(createElement(WeatherIcon, { code: 63, animated: true, size: 24 }));
+    expect(rainSvg).toContain('ws-anim-cloud');
+    expect(rainSvg).toContain('ws-anim-rain');
+
+    const hailSvg = renderToStaticMarkup(
+      createElement(WeatherIcon, { code: 99, phenomenon: 'hail', animated: true }),
+    );
+    expect(hailSvg).toContain('ws-anim-lightning');
+    expect(hailSvg).toContain('ws-anim-hail');
+
+    const blizzardSvg = renderToStaticMarkup(
+      createElement(WeatherIcon, { code: 73, phenomenon: 'blizzard', animated: true }),
+    );
+    expect(blizzardSvg).toContain('ws-anim-blizzard');
+
+    const cycloneSvg = renderToStaticMarkup(
+      createElement(WeatherIcon, { code: 65, phenomenon: 'cyclone', animated: true }),
+    );
+    expect(cycloneSvg).toContain('ws-anim-vortex');
+
+    const dataset = seedHistorical as unknown as WeatherDatasetResponse;
+    const mapBadgesHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'precipitation',
+        unit: 'F',
+        isDark: false,
+        timelineIndex: 30,
+        useTimeline: true,
+        selectedCode: null,
+        onSelectState: () => {},
+        showWeatherFx: true,
+        showWeatherBadges: true,
+        fxShowcase: true,
+      }),
+    );
+    expect(mapBadgesHtml).toContain('ws-anim-rain');
+    expect(mapBadgesHtml).toContain('ws-anim-lightning');
+    expect(mapBadgesHtml).toContain('ws-anim-hail');
+    expect(mapBadgesHtml).toContain('ws-anim-vortex');
   });
 });
