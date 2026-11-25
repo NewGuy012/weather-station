@@ -34,7 +34,9 @@ import {
   uvCategory,
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
+import { classifyWeatherPhenomenon } from '../../shared/weatherPhenomena';
 import { METRIC_SCALES, resolveMetricValue, resolveStateSlice } from '../utils/scales';
+import { DrawerWeatherBackdrop } from './DrawerWeatherBackdrop';
 import { HourlyChart } from './HourlyChart';
 import { WeatherIcon } from './WeatherIcon';
 
@@ -186,6 +188,22 @@ export function StateDrawer({
 
   const current = detail?.current ?? snapshot.current;
   const wmo = getWmoInfo(current.weatherCode);
+  const heroPhenomenon = classifyWeatherPhenomenon(
+    {
+      weatherCode: current.weatherCode,
+      precipitationMm: current.precipitationMm,
+      temperatureF: current.temperatureF,
+      apparentTemperatureF: current.apparentTemperatureF,
+      windSpeedMph: current.windSpeedMph,
+      windDirectionDeg: current.windDirectionDeg,
+      humidity: current.humidity,
+      uvIndex: current.uvIndex,
+      usAqi: current.usAqi,
+      cloudCoverPct: current.cloudCoverPct,
+    },
+    detail?.alerts,
+    metric,
+  );
   const aqiInfo = aqiCategory(current.usAqi);
   const isComparing = compareCodes.includes(meta.code);
   const isTop10Open = onToggleDetailedStateMode ? detailedStateMode : localTop10Open;
@@ -316,32 +334,48 @@ export function StateDrawer({
       </div>
 
       <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
-              <WeatherIcon code={current.weatherCode} size={24} />
-            </div>
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="tabular-nums text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px] dark:text-white">
-                  {formatTemp(current.temperatureF, unit, true)}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Feels {formatTemp(current.apparentTemperatureF, unit)}
-                </span>
+        <div className="relative overflow-hidden rounded-xl border border-slate-200/75 px-3 py-2.5 dark:border-slate-800/80">
+          <DrawerWeatherBackdrop phenomenon={heroPhenomenon.phenomenon} />
+          <div className="relative z-10 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-xs backdrop-blur-xs dark:bg-slate-900/75">
+                <WeatherIcon
+                  code={current.weatherCode}
+                  phenomenon={heroPhenomenon.phenomenon}
+                  size={25}
+                  animated
+                />
               </div>
-              <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                {wmo.label}
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="tabular-nums text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px] dark:text-white">
+                    {formatTemp(current.temperatureF, unit, true)}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Feels {formatTemp(current.apparentTemperatureF, unit)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <span>{wmo.label}</span>
+                  {heroPhenomenon.phenomenon !== 'clear' &&
+                    heroPhenomenon.phenomenon !== 'partly-cloudy' &&
+                    heroPhenomenon.phenomenon !== 'cloudy' &&
+                    heroPhenomenon.label !== wmo.label && (
+                      <span className="rounded-md bg-white/75 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800/80 dark:text-slate-200">
+                        {heroPhenomenon.label}
+                      </span>
+                    )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="text-right tabular-nums text-xs">
-            <div className="font-semibold text-slate-800 dark:text-slate-200">
-              H {formatTemp(current.tempHighF, unit)} / L {formatTemp(current.tempLowF, unit)}
-            </div>
-            <div className="text-[11px] text-slate-400">
-              {mode === 'historical' ? 'Window Range' : 'Today'}
+            <div className="text-right tabular-nums text-xs">
+              <div className="font-semibold text-slate-800 dark:text-slate-200">
+                H {formatTemp(current.tempHighF, unit)} / L {formatTemp(current.tempLowF, unit)}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                {mode === 'historical' ? 'Window Range' : 'Today'}
+              </div>
             </div>
           </div>
         </div>

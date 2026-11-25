@@ -2,11 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BroadcastDock } from '../src/client/components/BroadcastDock';
+import { DrawerWeatherBackdrop } from '../src/client/components/DrawerWeatherBackdrop';
 import { MapCanvas } from '../src/client/components/MapCanvas';
 import { MetricToolbar } from '../src/client/components/MetricToolbar';
+import { StateDrawer } from '../src/client/components/StateDrawer';
 import { WeatherEffectsOverlay } from '../src/client/components/WeatherEffectsOverlay';
 import { WeatherIcon } from '../src/client/components/WeatherIcon';
 import seedHistorical from '../src/server/data/seedHistorical.json';
+import { STATE_BY_CODE } from '../src/shared/states';
 import type { WeatherAlert, WeatherDatasetResponse } from '../src/shared/types';
 import {
   buildCityShowcasePhenomena,
@@ -425,5 +428,50 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
     expect(mapBadgesHtml).toContain('ws-anim-lightning');
     expect(mapBadgesHtml).toContain('ws-anim-hail');
     expect(mapBadgesHtml).toContain('ws-anim-vortex');
+  });
+
+  test('renders DrawerWeatherBackdrop and animated StateDrawer hero readout', () => {
+    const stormBackdrop = renderToStaticMarkup(
+      createElement(DrawerWeatherBackdrop, { phenomenon: 'thunderstorm' }),
+    );
+    expect(stormBackdrop).toContain('data-phenomenon="thunderstorm"');
+    expect(stormBackdrop).toContain('ws-anim-sheet-flash');
+    expect(stormBackdrop).toContain('ws-anim-rain');
+
+    const blizzardBackdrop = renderToStaticMarkup(
+      createElement(DrawerWeatherBackdrop, { phenomenon: 'blizzard' }),
+    );
+    expect(blizzardBackdrop).toContain('ws-anim-blizzard');
+
+    const dataset = seedHistorical as unknown as WeatherDatasetResponse;
+    const flDrawerHtml = renderToStaticMarkup(
+      createElement(StateDrawer, {
+        meta: STATE_BY_CODE.FL!,
+        snapshot: {
+          ...dataset.states.FL!,
+          current: {
+            ...dataset.states.FL!.current,
+            weatherCode: 99,
+            precipitationMm: 6.2,
+          },
+        },
+        detail: null,
+        isLoading: false,
+        mode: 'historical',
+        unit: 'F',
+        metric: 'precipitation',
+        selectedCity: 'Miami',
+        onSelectCity: () => {},
+        compareCodes: [],
+        onToggleCompare: () => {},
+        allStates: dataset.states,
+        onSelectState: () => {},
+        onPrintState: () => {},
+        onClose: () => {},
+      }),
+    );
+    expect(flDrawerHtml).toContain('data-phenomenon="hail"');
+    expect(flDrawerHtml).toContain('Hailstorm');
+    expect(flDrawerHtml).toContain('ws-anim-hail');
   });
 });
