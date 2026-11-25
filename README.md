@@ -4,17 +4,17 @@
 
 An interactive 50-state US weather atlas with historical archives, live forecasts, animated Doppler radar, wind streamlines, and printable briefings — with zero API keys required.
 
-[![US Weather Station — 50-State Weather Map (Dark Mode)](docs/screenshot.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
+[![US Weather Station — 50-State Weather Map with Live Weather FX (Dark Mode)](docs/screenshot.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
 
 ## Features
 
 - **50-State Interactive Map** — Explore temperatures, feels-like, precipitation, wind, humidity, AQI, and UV across all 50 states in light or dark mode.
 - **Historical & Live Weather** — Inspect curated US weather events or custom dates back to 1940, or switch to **Live** for current forecasts and active NWS severe alerts.
 - **State Details & Top 10 Cities** — Click any state for hourly trends, daily forecasts, and a city selector dropdown, or enable **Detailed State Mode** (`D`) to zoom in on its 10 most populated cities.
-- **Radar, Wind & Weather FX** — Overlay animated Doppler radar loops, live wind flow lines, and procedural **Weather FX** (`A`), and scrub across time with the bottom playback dock.
+- **Radar, Wind & Weather FX** — Overlay animated Doppler radar loops, live wind flow lines, and procedural **Weather FX** (`A`, enabled by default in **Live** mode), and scrub across time with the bottom playback dock.
 - **Customizable Colormaps & Controls** — Switch or flip colormaps (`C` / `Shift+C`), pan (drag or hold `Space`), zoom (`+`/`-`/`0` or scroll), and export briefings to PDF, PNG, CSV, or JSON.
 
-[![Detailed State Mode — California Top 10 Populated Cities (Dark Mode)](docs/screenshot-detailed.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
+[![Detailed State Mode — California Top 10 Populated Cities with Weather FX (Dark Mode)](docs/screenshot-detailed.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
 
 ## Quickstart
 
