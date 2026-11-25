@@ -11,8 +11,8 @@ An interactive 50-state US weather atlas with historical archives, live forecast
 - **50-State Interactive Map** — Explore temperatures, feels-like, precipitation, wind, humidity, AQI, and UV across all 50 states in light or dark mode.
 - **Historical & Live Weather** — Inspect curated US weather events or custom dates back to 1940, or switch to **Live** for current forecasts and active NWS severe alerts.
 - **State Details & Top 10 Cities** — Click any state for hourly trends, daily forecasts, and a city selector dropdown, or enable **Detailed State Mode** (`D`) to zoom in on its 10 most populated cities.
-- **Radar & Wind Animations** — Overlay animated Doppler radar loops and live wind flow lines, and scrub across time with the bottom playback dock.
-- **Customizable Colormaps & Controls** — Switch or flip colormaps (`C` / `Shift+C`), pan (`P` or `Space`), zoom (`+`/`-` or scroll), and export briefings to PDF, PNG, CSV, or JSON.
+- **Radar, Wind & Weather FX** — Overlay animated Doppler radar loops, live wind flow lines, and procedural **Weather FX** (`A`), and scrub across time with the bottom playback dock.
+- **Customizable Colormaps & Controls** — Switch or flip colormaps (`C` / `Shift+C`), pan (drag or hold `Space`), zoom (`+`/`-`/`0` or scroll), and export briefings to PDF, PNG, CSV, or JSON.
 
 [![Detailed State Mode — California Top 10 Populated Cities (Dark Mode)](docs/screenshot-detailed.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
 
@@ -52,7 +52,7 @@ bun run seed                     # Regenerate the default historical snapshot
 src/
 ├── client/   # React UI, interactive map, radar/wind overlays, print & export views
 ├── worker/   # Cloudflare Worker entrypoint & edge cache adapter
-├── server/   # API router, Open-Meteo/NWS/radar providers, city dataset
-└── shared/   # Shared types, state metadata, radar bounds, weather codes, presets, units
+├── server/   # API router, Open-Meteo/NWS/radar providers, baseline seed snapshot
+└── shared/   # Shared types, state/city tables, phenomena, radar, weather codes, presets, units
 tests/        # Unit, Worker, and API test suites
 ```
