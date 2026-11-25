@@ -9,8 +9,8 @@ import {
   type StatePhenomenon,
   type WeatherPhenomenon,
   buildCityShowcasePhenomena,
-  buildShowcasePhenomena,
   classifySnapshotPhenomenon,
+  classifyStatesPhenomena,
   hasActiveMapFx,
 } from '../../shared/weatherPhenomena';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
@@ -37,7 +37,7 @@ import {
 
 const CANVAS_SCALE = 2;
 
-export interface WeatherEffectsOverlayProps {
+interface WeatherEffectsOverlayProps {
   visible: boolean;
   states: Record<string, StateWeatherSnapshot>;
   metric: MetricLayer;
@@ -45,6 +45,7 @@ export interface WeatherEffectsOverlayProps {
   useTimeline: boolean;
   isDark: boolean;
   showcase: boolean;
+  statePhenomena?: Record<string, StatePhenomenon>;
   alertsByState?: Record<string, WeatherAlert[]>;
   detailedStateMode?: boolean;
   selectedCode?: string | null;
@@ -68,8 +69,6 @@ interface StateRegionGeom {
 interface FxParticle {
   x: number;
   y: number;
-  hitX: number;
-  hitY: number;
   life: number;
   speed: number;
   size: number;
@@ -115,11 +114,10 @@ interface ActiveRenderZone {
   isCityCell: boolean;
 }
 
-let cachedRegions: StateRegionGeom[] | null = null;
 let cachedRegionsByCode: Record<string, StateRegionGeom> | null = null;
 
-function buildStateRegions(): StateRegionGeom[] {
-  if (cachedRegions) return cachedRegions;
+function getRegionsMap(): Record<string, StateRegionGeom> {
+  if (cachedRegionsByCode) return cachedRegionsByCode;
 
   const geometries = getUsStateGeometries();
   let probeCtx: CanvasRenderingContext2D | null = null;
@@ -148,7 +146,7 @@ function buildStateRegions(): StateRegionGeom[] {
         anchors.push([g.centroid[0], g.centroid[1]]);
       }
 
-      // Stratified deterministic interior sampling so particles never spawn in ocean/cutouts
+      // Stratified interior sampling keeps particles inside state borders
       const cols = 6;
       const rows = 5;
       for (let r = 0; r < rows; r++) {
@@ -189,16 +187,11 @@ function buildStateRegions(): StateRegionGeom[] {
     };
   });
 
+  const byCode = Object.fromEntries(regions.map((r) => [r.code, r]));
   if (typeof Path2D !== 'undefined') {
-    cachedRegions = regions;
-    cachedRegionsByCode = Object.fromEntries(regions.map((r) => [r.code, r]));
+    cachedRegionsByCode = byCode;
   }
-  return regions;
-}
-
-function getRegionsMap(): Record<string, StateRegionGeom> {
-  const regions = buildStateRegions();
-  return cachedRegionsByCode ?? Object.fromEntries(regions.map((r) => [r.code, r]));
+  return byCode;
 }
 
 function pickCloudPositions(
@@ -245,19 +238,38 @@ function createParticle(zone: ActiveRenderZone, randomLife: boolean): FxParticle
   const anchor = pool[Math.floor(Math.random() * pool.length)] ?? zone.centroid;
   const spreadX = Math.min(24, zone.width * 0.28);
   const spreadY = Math.min(14, zone.height * 0.22);
-  const x = anchor[0] + (Math.random() - 0.5) * spreadX;
-  const y = anchor[1] + (Math.random() - 0.5) * spreadY;
   return {
-    x,
-    y,
-    hitX: x,
-    hitY: y,
+    x: anchor[0] + (Math.random() - 0.5) * spreadX,
+    y: anchor[1] + (Math.random() - 0.5) * spreadY,
     life: randomLife ? Math.random() : 0,
     speed: 0.78 + Math.random() * 0.48,
     size: 0.8 + Math.random() * 0.65,
     phase: Math.random() * Math.PI * 2,
     crystal: Math.random() < 0.48,
   };
+}
+
+function stepParticles(
+  rt: ZoneRuntime,
+  zone: ActiveRenderZone,
+  dt: number,
+  reducedMotion: boolean,
+  rate: number,
+  draw: (p: FxParticle, index: number) => void,
+  onExpire?: (p: FxParticle) => void,
+): void {
+  for (let i = 0; i < rt.particles.length; i++) {
+    const p = rt.particles[i]!;
+    if (!reducedMotion) {
+      p.life += dt * rate * p.speed;
+      if (p.life >= 1) {
+        onExpire?.(p);
+        rt.particles[i] = createParticle(zone, false);
+        continue;
+      }
+    }
+    draw(p, i);
+  }
 }
 
 function targetParticleCount(zone: ActiveRenderZone): number {
@@ -299,6 +311,7 @@ export function WeatherEffectsOverlay({
   useTimeline,
   isDark,
   showcase,
+  statePhenomena,
   alertsByState = {},
   detailedStateMode = false,
   selectedCode = null,
@@ -311,8 +324,9 @@ export function WeatherEffectsOverlay({
     if (!visible) return [];
     const regionsByCode = getRegionsMap();
     const zones: ActiveRenderZone[] = [];
-
-    const showcaseStates = showcase ? buildShowcasePhenomena(states) : null;
+    const resolvedStates =
+      statePhenomena ??
+      classifyStatesPhenomena(states, timelineIndex, useTimeline, alertsByState, metric, showcase);
 
     for (const [code, region] of Object.entries(regionsByCode)) {
       const snap = states[code];
@@ -321,7 +335,6 @@ export function WeatherEffectsOverlay({
       const isSelected = Boolean(detailedStateMode && selectedCode === code);
       const dimFactor = detailedStateMode && selectedCode && !isSelected ? 0.2 : 1;
 
-      // In Detailed State Mode, draw city-anchored cells inside the selected state once loaded
       if (isSelected && stateCitiesWeather && stateCitiesWeather.code === code) {
         const cityShowcase = showcase ? buildCityShowcasePhenomena(stateCitiesWeather.cities) : null;
         for (const city of stateCitiesWeather.cities) {
@@ -365,15 +378,8 @@ export function WeatherEffectsOverlay({
         continue;
       }
 
-      let statePhenom: StatePhenomenon;
-      if (showcaseStates) {
-        statePhenom = showcaseStates[code]!;
-      } else {
-        const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-        statePhenom = classifySnapshotPhenomenon(slice, snap.current, alertsByState[code], metric);
-      }
-
-      if (!hasActiveMapFx(statePhenom.phenomenon, metric)) continue;
+      const statePhenom = resolvedStates[code];
+      if (!statePhenom || !hasActiveMapFx(statePhenom.phenomenon, metric)) continue;
 
       zones.push({
         key: `state:${code}`,
@@ -396,6 +402,7 @@ export function WeatherEffectsOverlay({
   }, [
     visible,
     states,
+    statePhenomena,
     metric,
     timelineIndex,
     useTimeline,
@@ -406,15 +413,19 @@ export function WeatherEffectsOverlay({
     stateCitiesWeather,
   ]);
 
-  const configRef = useRef({
-    activeZones,
-    isDark,
-    zoom,
-  });
+  const configRef = useRef({ activeZones, isDark, zoom });
   configRef.current = { activeZones, isDark, zoom };
 
   const runtimeMapRef = useRef<Map<string, ZoneRuntime>>(new Map());
   const drawStaticRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    const activeKeys = new Set(activeZones.map((z) => z.key));
+    for (const key of runtimeMapRef.current.keys()) {
+      if (!activeKeys.has(key)) runtimeMapRef.current.delete(key);
+    }
+  }, [visible, activeZones]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -486,13 +497,6 @@ export function WeatherEffectsOverlay({
 
       ctx.setTransform(CANVAS_SCALE, 0, 0, CANVAS_SCALE, 0, 0);
       ctx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-
-      const activeKeys = new Set(zones.map((z) => z.key));
-      for (const existingKey of Array.from(runtimeMapRef.current.keys())) {
-        if (!activeKeys.has(existingKey)) {
-          runtimeMapRef.current.delete(existingKey);
-        }
-      }
 
       for (let zIdx = 0; zIdx < zones.length; zIdx++) {
         const zone = zones[zIdx]!;
@@ -612,47 +616,51 @@ export function WeatherEffectsOverlay({
         }
 
         // 5. Particles & phenomenon motion
+        const drawFallStreak = (
+          p: FxParticle,
+          tilt: number,
+          fallH: number,
+          streakLen: number,
+          lineWidth: number,
+          color: string,
+        ) => {
+          drawRainStreak(
+            ctx,
+            p.x + tilt * p.life * zoomScale,
+            p.y + fallH * p.life,
+            (tilt / Math.max(1, fallH)) * streakLen * zoomScale,
+            streakLen * zoomScale,
+            lineWidth * zoomScale,
+            color,
+          );
+        };
+
         if (phenomenon === 'rain' || phenomenon === 'drizzle' || phenomenon === 'thunderstorm') {
           const isDrizzle = phenomenon === 'drizzle';
           const tilt = Math.min(24, Math.max(3, windSpeedMph * 0.75)) * windX;
           const fallH = isDrizzle ? zoneFallH * 0.72 : zoneFallH;
-          const streakLen = (isDrizzle ? 4.5 : 8.5) * zoomScale;
-          const color = isDrizzle ? palette.drizzleStroke : palette.rainStroke;
+          const streakLen = isDrizzle ? 4.5 : 8.5;
+          const strokeColor = isDrizzle ? palette.drizzleStroke : palette.rainStroke;
 
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * (isDrizzle ? 0.95 : 1.55) * p.speed;
-              if (p.life >= 1) {
-                if (!isDrizzle && Math.random() < 0.55) {
-                  rt.splashes.push({
-                    x: p.x + tilt * p.life * 0.9,
-                    y: p.y + fallH * 0.92,
-                    progress: 0,
-                    radius: (2.2 + strength * 1.5) * zoomScale,
-                  });
-                }
-                rt.particles[i] = createParticle(zone, false);
-                continue;
+          stepParticles(
+            rt,
+            zone,
+            dt,
+            reducedMotion,
+            isDrizzle ? 0.95 : 1.55,
+            (p) => drawFallStreak(p, tilt, fallH, streakLen, isDrizzle ? 0.85 : 1.25, strokeColor),
+            (p) => {
+              if (!isDrizzle && Math.random() < 0.55) {
+                rt.splashes.push({
+                  x: p.x + tilt * p.life * 0.9,
+                  y: p.y + fallH * 0.92,
+                  progress: 0,
+                  radius: (2.2 + strength * 1.5) * zoomScale,
+                });
               }
-            }
+            },
+          );
 
-            const curX = p.x + tilt * p.life * zoomScale;
-            const curY = p.y + fallH * p.life;
-            const dx = (tilt / Math.max(1, fallH)) * streakLen * zoomScale;
-            const dy = streakLen;
-            drawRainStreak(
-              ctx,
-              curX,
-              curY,
-              dx,
-              dy,
-              (isDrizzle ? 0.85 : 1.25) * zoomScale,
-              color,
-            );
-          }
-
-          // Impact splash ripples
           for (let s = rt.splashes.length - 1; s >= 0; s--) {
             const sp = rt.splashes[s]!;
             if (!reducedMotion) {
@@ -666,83 +674,49 @@ export function WeatherEffectsOverlay({
           }
         } else if (phenomenon === 'hail') {
           const tilt = Math.min(18, Math.max(4, windSpeedMph * 0.55)) * windX;
-          const fallH = zoneFallH;
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 1.75 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
-
-            const impactThreshold = 0.72;
-            const hitX = p.x + tilt * impactThreshold * zoomScale;
-            const hitY = p.y + fallH * impactThreshold;
-
+          const impactThreshold = 0.72;
+          stepParticles(rt, zone, dt, reducedMotion, 1.75, (p, i) => {
             if (p.life < impactThreshold) {
-              const curX = p.x + tilt * p.life * zoomScale;
-              const curY = p.y + fallH * p.life;
               if (i % 3 === 0) {
-                drawRainStreak(
-                  ctx,
-                  curX,
-                  curY,
-                  (tilt / Math.max(1, fallH)) * 6 * zoomScale,
-                  6 * zoomScale,
-                  1.05 * zoomScale,
-                  palette.rainStroke,
-                );
+                drawFallStreak(p, tilt, zoneFallH, 6, 1.05, palette.rainStroke);
               } else {
-                drawHailStone(ctx, curX, curY, (1.7 + p.size * 0.75) * zoomScale, 0, palette);
+                drawHailStone(
+                  ctx,
+                  p.x + tilt * p.life * zoomScale,
+                  p.y + zoneFallH * p.life,
+                  (1.7 + p.size * 0.75) * zoomScale,
+                  0,
+                  palette,
+                );
               }
             } else {
               const bounceU = (p.life - impactThreshold) / (1 - impactThreshold);
-              const bx = hitX + (windX * 4 + (p.phase > Math.PI ? 2.5 : -2.5)) * bounceU * zoomScale;
-              const by = hitY - Math.sin(bounceU * Math.PI) * 5.8 * zoomScale;
+              const bx =
+                p.x +
+                tilt * impactThreshold * zoomScale +
+                (windX * 4 + (p.phase > Math.PI ? 2.5 : -2.5)) * bounceU * zoomScale;
+              const by = zoneFallH * impactThreshold + p.y - Math.sin(bounceU * Math.PI) * 5.8 * zoomScale;
               drawHailStone(ctx, bx, by, (1.6 + p.size * 0.7) * zoomScale, bounceU, palette);
             }
-          }
+          });
         } else if (phenomenon === 'snow') {
           const fallH = zoneFallH * 0.9;
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 0.42 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
-
+          stepParticles(rt, zone, dt, reducedMotion, 0.42, (p) => {
             const sway = Math.sin(timeSec * 1.9 + p.phase) * 5.5 * zoomScale;
-            const curX = p.x + sway + windX * windSpeedMph * 0.35 * p.life * zoomScale;
-            const curY = p.y + fallH * p.life;
-            const radius = (p.crystal ? 2.6 : 1.55) * p.size * zoomScale;
             drawSnowflake(
               ctx,
-              curX,
-              curY,
-              radius,
+              p.x + sway + windX * windSpeedMph * 0.35 * p.life * zoomScale,
+              p.y + fallH * p.life,
+              (p.crystal ? 2.6 : 1.55) * p.size * zoomScale,
               timeSec * 0.9 + p.phase,
               p.crystal,
               palette,
             );
-          }
+          });
         } else if (phenomenon === 'blizzard') {
           const driftX = (windX || 0.8) * Math.max(24, windSpeedMph * 1.05);
           const fallH = zoneFallH * 0.68;
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 1.65 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
-
+          stepParticles(rt, zone, dt, reducedMotion, 1.65, (p) => {
             const curX = p.x + driftX * p.life * zoomScale;
             const curY = p.y + fallH * p.life + Math.sin(p.life * 6 + p.phase) * 2 * zoomScale;
             if (p.crystal) {
@@ -758,20 +732,11 @@ export function WeatherEffectsOverlay({
             } else {
               drawSnowflake(ctx, curX, curY, 1.8 * p.size * zoomScale, p.phase, false, palette);
             }
-          }
+          });
         } else if (phenomenon === 'freezing-rain') {
           const tilt = Math.min(20, Math.max(4, windSpeedMph * 0.65)) * windX;
           const fallH = zoneFallH * 0.92;
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 1.35 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
-
+          stepParticles(rt, zone, dt, reducedMotion, 1.35, (p, i) => {
             if (i % 3 === 0) {
               const twinkle = Math.pow(Math.max(0, Math.sin(timeSec * 3.1 + p.phase)), 2.5);
               drawDiamondGlint(
@@ -783,22 +748,11 @@ export function WeatherEffectsOverlay({
                 palette.iceGlint,
               );
             } else {
-              const curX = p.x + tilt * p.life * zoomScale;
-              const curY = p.y + fallH * p.life;
-              drawRainStreak(
-                ctx,
-                curX,
-                curY,
-                (tilt / Math.max(1, fallH)) * 7 * zoomScale,
-                7 * zoomScale,
-                1.25 * zoomScale,
-                palette.freezingStroke,
-              );
+              drawFallStreak(p, tilt, fallH, 7, 1.25, palette.freezingStroke);
             }
-          }
+          });
         } else if (phenomenon === 'fog') {
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
+          for (const p of rt.particles) {
             const drift = Math.sin(timeSec * 0.45 + p.phase) * Math.min(14, zone.width * 0.16) * zoomScale;
             const ribW = Math.max(18, Math.min(54, zone.width * 0.56)) * p.size * zoomScale;
             const ribH = Math.max(5.5, Math.min(11, zone.height * 0.14)) * zoomScale;
@@ -810,43 +764,35 @@ export function WeatherEffectsOverlay({
           for (let i = 0; i < rt.particles.length; i++) {
             const p = rt.particles[i]!;
             if (!reducedMotion) {
-              p.life += dt * 1.45 * p.speed;
-              if (p.life >= 1) p.life -= 1;
+              p.life = (p.life + dt * 1.45 * p.speed) % 1;
             }
             const theta = p.phase - timeSec * (2.6 + strength) - p.life * Math.PI * 1.4;
             const r = vortexR * (0.28 + ((i % 5) / 5) * 0.68);
-            const px = zone.centroid[0] + Math.cos(theta) * r;
-            const py = zone.centroid[1] + Math.sin(theta) * r;
-            const tx = Math.sin(theta) * 5.5 * zoomScale;
-            const ty = -Math.cos(theta) * 5.5 * zoomScale;
-            drawRainStreak(ctx, px, py, tx, ty, 1.2 * zoomScale, palette.rainStroke);
+            drawRainStreak(
+              ctx,
+              zone.centroid[0] + Math.cos(theta) * r,
+              zone.centroid[1] + Math.sin(theta) * r,
+              Math.sin(theta) * 5.5 * zoomScale,
+              -Math.cos(theta) * 5.5 * zoomScale,
+              1.2 * zoomScale,
+              palette.rainStroke,
+            );
           }
         } else if (phenomenon === 'heat') {
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 0.55 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
-            const rise = p.life * 16 * zoomScale;
-            const alpha = Math.sin(p.life * Math.PI) * (0.55 + strength * 0.35);
+          stepParticles(rt, zone, dt, reducedMotion, 0.55, (p) => {
             drawHeatShimmerLine(
               ctx,
               p.x,
-              p.y + 8 * zoomScale - rise,
+              p.y + (8 - p.life * 16) * zoomScale,
               14 * p.size * zoomScale,
               2.2 * zoomScale,
               timeSec * 4.2 + p.phase,
-              alpha,
+              Math.sin(p.life * Math.PI) * (0.55 + strength * 0.35),
               palette,
             );
-          }
+          });
         } else if (phenomenon === 'frost') {
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
+          for (const p of rt.particles) {
             const twinkle = Math.pow(Math.max(0, Math.sin(timeSec * 2.2 + p.phase)), 2);
             drawDiamondGlint(
               ctx,
@@ -859,28 +805,19 @@ export function WeatherEffectsOverlay({
           }
         } else if (phenomenon === 'aqi' || phenomenon === 'humidity') {
           const fill = phenomenon === 'aqi' ? palette.aqiFill : palette.humidityFill;
-          for (let i = 0; i < rt.particles.length; i++) {
-            const p = rt.particles[i]!;
-            if (!reducedMotion) {
-              p.life += dt * 0.35 * p.speed;
-              if (p.life >= 1) {
-                rt.particles[i] = createParticle(zone, false);
-                continue;
-              }
-            }
+          stepParticles(rt, zone, dt, reducedMotion, 0.35, (p) => {
             const dx = (windX || 0.6) * p.life * 18 * zoomScale;
             const dy = (phenomenon === 'humidity' ? -10 : windY * 6) * p.life * zoomScale;
-            const alpha = Math.sin(p.life * Math.PI);
             drawHazeWisp(
               ctx,
               p.x + dx,
               p.y + dy,
               (16 + p.size * 10) * zoomScale,
               (8 + p.size * 4) * zoomScale,
-              alpha,
+              Math.sin(p.life * Math.PI),
               fill,
             );
-          }
+          });
         }
 
         // 6. Clouds drawn over upper precipitation origin

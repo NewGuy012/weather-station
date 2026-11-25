@@ -177,15 +177,6 @@ body,
   }
 }
 
-@keyframes ws-vortex-spin {
-  from {
-    transform: rotate(360deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
-}
-
 @keyframes ws-glint-pulse {
   0%,
   100% {
@@ -253,7 +244,7 @@ body,
 .ws-anim-vortex {
   transform-box: fill-box;
   transform-origin: center;
-  animation: ws-vortex-spin 2.8s linear infinite;
+  animation: ws-sun-spin 2.8s linear infinite reverse;
 }
 
 .ws-anim-glint {
@@ -268,18 +259,7 @@ body,
 
 @media (prefers-reduced-motion: reduce) {
   .ws-alert-pulse,
-  .ws-anim-cloud,
-  .ws-anim-rain,
-  .ws-anim-blizzard,
-  .ws-anim-snow,
-  .ws-anim-hail,
-  .ws-anim-lightning,
-  .ws-anim-sheet-flash,
-  .ws-anim-fog,
-  .ws-anim-sun,
-  .ws-anim-vortex,
-  .ws-anim-glint,
-  .ws-anim-heat {
+  [class*="ws-anim-"] {
     animation: none !important;
   }
 }

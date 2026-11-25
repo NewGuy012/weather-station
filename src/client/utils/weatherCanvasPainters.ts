@@ -34,7 +34,16 @@ export interface ThemeFxPalette {
   humidityFill: string;
 }
 
+const SHARED_FX_BASE = {
+  hailFill: 'rgba(224, 242, 254, 0.96)',
+  snowFill: 'rgba(248, 250, 252, 0.95)',
+  blizzardStreak: 'rgba(248, 250, 252, 0.84)',
+  iceGlint: 'rgba(224, 242, 254, 0.96)',
+  heatGlow: 'rgba(249, 115, 22, 0.16)',
+};
+
 export const LIGHT_FX_PALETTE: ThemeFxPalette = {
+  ...SHARED_FX_BASE,
   cloudFill: 'rgba(148, 163, 184, 0.72)',
   cloudBelly: 'rgba(71, 85, 105, 0.52)',
   cloudHighlight: 'rgba(248, 250, 252, 0.55)',
@@ -50,18 +59,13 @@ export const LIGHT_FX_PALETTE: ThemeFxPalette = {
   lightningGlow: 'rgba(245, 158, 11, 0.82)',
   lightningCore: 'rgba(255, 251, 235, 0.98)',
   lightningSheet: 'rgba(253, 224, 71, 0.24)',
-  hailFill: 'rgba(240, 249, 255, 0.96)',
   hailStroke: 'rgba(14, 116, 144, 0.85)',
-  snowFill: 'rgba(255, 255, 255, 0.95)',
   snowHalo: 'rgba(51, 65, 85, 0.28)',
-  blizzardStreak: 'rgba(248, 250, 252, 0.84)',
   freezingStroke: 'rgba(6, 182, 212, 0.82)',
-  iceGlint: 'rgba(224, 242, 254, 0.96)',
   fogFill: 'rgba(148, 163, 184, 0.44)',
   cycloneArm: 'rgba(51, 65, 85, 0.56)',
   cycloneCore: 'rgba(56, 189, 248, 0.72)',
   heatStroke: 'rgba(234, 88, 12, 0.48)',
-  heatGlow: 'rgba(249, 115, 22, 0.16)',
   frostGlint: 'rgba(14, 165, 233, 0.78)',
   uvStroke: 'rgba(234, 88, 12, 0.54)',
   aqiFill: 'rgba(180, 83, 9, 0.28)',
@@ -69,6 +73,7 @@ export const LIGHT_FX_PALETTE: ThemeFxPalette = {
 };
 
 export const DARK_FX_PALETTE: ThemeFxPalette = {
+  ...SHARED_FX_BASE,
   cloudFill: 'rgba(148, 163, 184, 0.46)',
   cloudBelly: 'rgba(30, 41, 59, 0.62)',
   cloudHighlight: 'rgba(241, 245, 249, 0.34)',
@@ -84,18 +89,13 @@ export const DARK_FX_PALETTE: ThemeFxPalette = {
   lightningGlow: 'rgba(250, 204, 21, 0.88)',
   lightningCore: 'rgba(255, 255, 255, 1)',
   lightningSheet: 'rgba(167, 139, 250, 0.28)',
-  hailFill: 'rgba(224, 242, 254, 0.96)',
   hailStroke: 'rgba(56, 189, 248, 0.9)',
-  snowFill: 'rgba(248, 250, 252, 0.95)',
   snowHalo: 'rgba(15, 23, 42, 0.32)',
-  blizzardStreak: 'rgba(226, 232, 240, 0.86)',
   freezingStroke: 'rgba(103, 232, 249, 0.88)',
-  iceGlint: 'rgba(207, 250, 254, 0.96)',
   fogFill: 'rgba(203, 213, 225, 0.34)',
   cycloneArm: 'rgba(148, 163, 184, 0.52)',
   cycloneCore: 'rgba(125, 211, 252, 0.82)',
   heatStroke: 'rgba(251, 146, 60, 0.52)',
-  heatGlow: 'rgba(251, 146, 60, 0.16)',
   frostGlint: 'rgba(125, 211, 252, 0.86)',
   uvStroke: 'rgba(250, 204, 21, 0.58)',
   aqiFill: 'rgba(245, 158, 11, 0.24)',

@@ -16,7 +16,6 @@ interface VectorStation {
   y: number;
   vx: number;
   vy: number;
-  speed: number;
 }
 
 interface Particle {
@@ -45,14 +44,11 @@ export function WindOverlay({
         const rad = (slice.windDirectionDeg * Math.PI) / 180;
         const speed = Math.max(1, slice.windSpeedMph);
         // Meteorological wind direction is FROM deg -> blow vector is (-sin, cos)
-        const vx = -Math.sin(rad) * speed;
-        const vy = Math.cos(rad) * speed;
         return {
           x: g.centroid[0],
           y: g.centroid[1],
-          vx,
-          vy,
-          speed,
+          vx: -Math.sin(rad) * speed,
+          vy: Math.cos(rad) * speed,
         };
       })
       .filter((s): s is VectorStation => s !== null);
@@ -60,6 +56,8 @@ export function WindOverlay({
 
   const stationsRef = useRef<VectorStation[]>(stations);
   stationsRef.current = stations;
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
   useEffect(() => {
     if (!visible) return;
@@ -81,7 +79,7 @@ export function WindOverlay({
 
     const particles: Particle[] = Array.from({ length: PARTICLE_COUNT }, spawn);
 
-    const sampleWind = (x: number, y: number): { vx: number; vy: number; speed: number } => {
+    const sampleWind = (x: number, y: number): { vx: number; vy: number } => {
       const list = stationsRef.current;
       let wSum = 0;
       let vxSum = 0;
@@ -91,24 +89,25 @@ export function WindOverlay({
         const st = list[i]!;
         const dx = x - st.x;
         const dy = y - st.y;
-        const d2 = dx * dx + dy * dy + 220;
-        const w = 1 / d2;
+        const w = 1 / (dx * dx + dy * dy + 220);
         wSum += w;
         vxSum += st.vx * w;
         vySum += st.vy * w;
       }
 
-      if (wSum === 0) return { vx: 0, vy: 0, speed: 0 };
-      const vx = vxSum / wSum;
-      const vy = vySum / wSum;
-      return { vx, vy, speed: Math.hypot(vx, vy) };
+      return wSum === 0 ? { vx: 0, vy: 0 } : { vx: vxSum / wSum, vy: vySum / wSum };
     };
 
     let rafId = 0;
     let lastTime = performance.now();
 
     const tick = (now: number) => {
-      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      if (document.hidden) {
+        lastTime = now;
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
 
       // Fade trails without accumulating opaque fill
@@ -122,7 +121,7 @@ export function WindOverlay({
       ctx.clip(clipPath);
       ctx.lineWidth = 1.35;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = isDark ? 'rgba(226, 232, 240, 0.55)' : 'rgba(15, 23, 42, 0.42)';
+      ctx.strokeStyle = isDarkRef.current ? 'rgba(226, 232, 240, 0.55)' : 'rgba(15, 23, 42, 0.42)';
 
       ctx.beginPath();
       for (let i = 0; i < particles.length; i++) {
@@ -154,14 +153,20 @@ export function WindOverlay({
       rafId = requestAnimationFrame(tick);
     };
 
+    const handleVisibility = () => {
+      if (!document.hidden) lastTime = performance.now();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     ctx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
     rafId = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(rafId);
+      document.removeEventListener('visibilitychange', handleVisibility);
       ctx.clearRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
     };
-  }, [visible, isDark]);
+  }, [visible]);
 
   if (!visible) return null;
 

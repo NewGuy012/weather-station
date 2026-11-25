@@ -107,60 +107,58 @@ function makeStatePhenomenon(
   };
 }
 
-interface AlertClassification {
+interface AlertRule {
+  pattern: RegExp;
   phenomenon: WeatherPhenomenon;
   strength: number;
-  isSevere: boolean;
+  severe: boolean;
 }
+
+const ALERT_RULES: readonly AlertRule[] = [
+  { pattern: /tornado|hurricane|tropical storm|typhoon/, phenomenon: 'cyclone', strength: 1, severe: true },
+  { pattern: /blizzard/, phenomenon: 'blizzard', strength: 0.95, severe: true },
+  { pattern: /ice storm|freezing rain|sleet/, phenomenon: 'freezing-rain', strength: 0.9, severe: true },
+  { pattern: /hail/, phenomenon: 'hail', strength: 0.95, severe: true },
+  { pattern: /severe thunderstorm|thunderstorm warning/, phenomenon: 'thunderstorm', strength: 0.9, severe: true },
+  { pattern: /winter storm|snow squall|lake effect snow/, phenomenon: 'snow', strength: 0.85, severe: true },
+  { pattern: /dense fog|freezing fog/, phenomenon: 'fog', strength: 0.75, severe: false },
+];
 
 function classifyFromAlerts(
   alerts: WeatherAlert[] | undefined,
   windSpeedMph: number,
-): AlertClassification | null {
-  if (!alerts || alerts.length === 0) return null;
+): { phenomenon: WeatherPhenomenon; strength: number; isSevere: boolean } | null {
+  if (!alerts?.length) return null;
 
-  let thermalFallback: AlertClassification | null = null;
+  let bestRuleIdx = ALERT_RULES.length;
+  let thermalFallback: { phenomenon: WeatherPhenomenon; strength: number; isSevere: boolean } | null = null;
 
   for (const al of alerts) {
     const text = `${al.event} ${al.headline}`.toLowerCase();
-    if (/tornado|hurricane|tropical storm|typhoon/.test(text)) {
-      return { phenomenon: 'cyclone', strength: 1, isSevere: true };
-    }
-    if (/blizzard/.test(text)) {
-      return { phenomenon: 'blizzard', strength: 0.95, isSevere: true };
-    }
-    if (/ice storm|freezing rain|sleet/.test(text)) {
-      return { phenomenon: 'freezing-rain', strength: 0.9, isSevere: true };
-    }
-    if (/hail/.test(text)) {
-      return { phenomenon: 'hail', strength: 0.95, isSevere: true };
-    }
-    if (/severe thunderstorm|thunderstorm warning/.test(text)) {
-      return { phenomenon: 'thunderstorm', strength: 0.9, isSevere: true };
-    }
-    if (/winter storm|snow squall|lake effect snow/.test(text)) {
-      return {
-        phenomenon: windSpeedMph >= 22 ? 'blizzard' : 'snow',
-        strength: 0.85,
-        isSevere: true,
-      };
-    }
-    if (/dense fog|freezing fog/.test(text)) {
-      return { phenomenon: 'fog', strength: 0.75, isSevere: false };
-    }
-    if (!thermalFallback && /excessive heat|heat advisory|heat warning/.test(text)) {
+    const matchedIdx = ALERT_RULES.findIndex((r) => r.pattern.test(text));
+    if (matchedIdx >= 0 && matchedIdx < bestRuleIdx) {
+      bestRuleIdx = matchedIdx;
+    } else if (!thermalFallback && /excessive heat|heat advisory|heat warning/.test(text)) {
       thermalFallback = { phenomenon: 'heat', strength: 0.85, isSevere: al.severity === 'Extreme' };
     } else if (!thermalFallback && /wind chill|extreme cold|arctic/.test(text)) {
       thermalFallback = { phenomenon: 'frost', strength: 0.85, isSevere: al.severity === 'Extreme' };
     }
   }
 
+  if (bestRuleIdx < ALERT_RULES.length) {
+    const rule = ALERT_RULES[bestRuleIdx]!;
+    return {
+      phenomenon: rule.phenomenon === 'snow' && windSpeedMph >= 22 ? 'blizzard' : rule.phenomenon,
+      strength: rule.strength,
+      isSevere: rule.severe,
+    };
+  }
   return thermalFallback;
 }
 
 /**
- * Classifies weather telemetry, WMO codes, and NWS alerts into a map animation phenomenon.
- * Augments ERA5 historical WMO subsets (which omit 95-99, 56-67, and 45) using physical thresholds.
+ * Classifies telemetry, WMO codes, and NWS alerts into a map phenomenon.
+ * Augments ERA5 historical WMO subsets (omitting 95-99, 56-67, 45) via physical thresholds.
  */
 export function classifyWeatherPhenomenon(
   telemetry: PhenomenonTelemetry,
@@ -176,191 +174,75 @@ export function classifyWeatherPhenomenon(
     telemetry.apparentTemperatureF !== undefined && Number.isFinite(telemetry.apparentTemperatureF)
       ? telemetry.apparentTemperatureF
       : temp;
+  const emit = (phenomenon: WeatherPhenomenon, strength: number, precipMm = 0, isSevere = false) =>
+    makeStatePhenomenon(phenomenon, strength, windDeg, wind, precipMm, isSevere);
 
   const alertHit = classifyFromAlerts(alerts, wind);
   if (alertHit && PRECIP_AND_STORM_SET.has(alertHit.phenomenon)) {
-    return makeStatePhenomenon(
-      alertHit.phenomenon,
-      alertHit.strength,
-      windDeg,
-      wind,
-      Math.max(precip, 2),
-      alertHit.isSevere,
-    );
+    return emit(alertHit.phenomenon, alertHit.strength, Math.max(precip, 2), alertHit.isSevere);
   }
 
-  // Intense cyclonic gale + heavy rain (e.g. Superstorm Sandy, coastal hurricanes)
   if ((wmo.category === 'rain' || wmo.category === 'thunderstorm' || precip >= 2.5) && wind >= 34) {
-    return makeStatePhenomenon(
-      'cyclone',
-      0.75 + (wind - 34) / 35 + precip / 25,
-      windDeg,
-      wind,
-      precip,
-      true,
-    );
+    return emit('cyclone', 0.75 + (wind - 34) / 35 + precip / 25, precip, true);
   }
-
-  // Hail-bearing thunderstorms (WMO 96, 99)
   if (telemetry.weatherCode === 96 || telemetry.weatherCode === 99) {
-    return makeStatePhenomenon(
-      'hail',
-      telemetry.weatherCode === 99 ? 1 : 0.78 + precip / 15,
-      windDeg,
-      wind,
-      Math.max(precip, 2.5),
-      true,
-    );
+    return emit('hail', telemetry.weatherCode === 99 ? 1 : 0.78 + precip / 15, Math.max(precip, 2.5), true);
   }
-
-  // Thunderstorms (WMO 95) or heavy warm-sector convective downpours
   if (wmo.category === 'thunderstorm' || (precip >= 4.5 && temp >= 56 && wmo.category !== 'snow')) {
-    return makeStatePhenomenon(
-      'thunderstorm',
-      0.65 + precip / 14,
-      windDeg,
-      wind,
-      Math.max(precip, 1.5),
-      true,
-    );
+    return emit('thunderstorm', 0.65 + precip / 14, Math.max(precip, 1.5), true);
   }
-
-  // Freezing rain / sleet (WMO 56-57, 66-67, or sub-freezing rain)
   if (
     wmo.category === 'freezing-rain' ||
     ((wmo.category === 'rain' || wmo.category === 'drizzle' || precip >= 0.25) &&
       temp <= 32 &&
       wmo.category !== 'snow')
   ) {
-    return makeStatePhenomenon(
-      'freezing-rain',
-      0.45 + precip / 6,
-      windDeg,
-      wind,
-      Math.max(precip, 0.4),
-      precip >= 2,
-    );
+    return emit('freezing-rain', 0.45 + precip / 6, Math.max(precip, 0.4), precip >= 2);
   }
-
-  // Snow & Blizzards (WMO 71-77, 85-86, or sub-freezing precip)
   if (wmo.category === 'snow' || (precip >= 0.3 && temp <= 30)) {
     if (wind >= 22) {
-      return makeStatePhenomenon(
-        'blizzard',
-        0.6 + (wind - 22) / 25 + precip / 8,
-        windDeg,
-        wind,
-        Math.max(precip, 0.5),
-        true,
-      );
+      return emit('blizzard', 0.6 + (wind - 22) / 25 + precip / 8, Math.max(precip, 0.5), true);
     }
     const heavyBonus = telemetry.weatherCode === 75 || telemetry.weatherCode === 86 ? 0.3 : 0;
-    return makeStatePhenomenon(
-      'snow',
-      0.35 + precip / 5 + heavyBonus,
-      windDeg,
-      wind,
-      Math.max(precip, 0.3),
-      precip >= 3,
-    );
+    return emit('snow', 0.35 + precip / 5 + heavyBonus, Math.max(precip, 0.3), precip >= 3);
   }
-
-  // Rain (WMO 61-65, 80-82, or measurable precip >= 0.4 mm/h)
   if (wmo.category === 'rain' || precip >= 0.4) {
-    return makeStatePhenomenon(
-      'rain',
-      0.35 + Math.min(1, precip / 8) * 0.65,
-      windDeg,
-      wind,
-      Math.max(precip, 0.5),
-      precip >= 6,
-    );
+    return emit('rain', 0.35 + Math.min(1, precip / 8) * 0.65, Math.max(precip, 0.5), precip >= 6);
   }
-
-  // Drizzle (WMO 51-55, or light precip >= 0.05 mm/h)
   if (wmo.category === 'drizzle' || precip >= 0.05) {
-    return makeStatePhenomenon(
-      'drizzle',
-      0.28 + Math.min(0.6, precip * 0.9),
-      windDeg,
-      wind,
-      Math.max(precip, 0.1),
-      false,
-    );
+    return emit('drizzle', 0.28 + Math.min(0.6, precip * 0.9), Math.max(precip, 0.1));
   }
-
-  // Fog (WMO 45, 48)
   if (wmo.category === 'fog') {
-    return makeStatePhenomenon(
-      'fog',
-      telemetry.weatherCode === 48 ? 0.85 : 0.65,
-      windDeg,
-      wind,
-      0,
-      false,
-    );
+    return emit('fog', telemetry.weatherCode === 48 ? 0.85 : 0.65);
   }
-
-  // Thermal NWS alerts for dry states
   if (alertHit) {
-    return makeStatePhenomenon(alertHit.phenomenon, alertHit.strength, windDeg, wind, 0, alertHit.isSevere);
+    return emit(alertHit.phenomenon, alertHit.strength, 0, alertHit.isSevere);
   }
 
-  // Metric-contextual atmospheric effects for dry states
   if (metric === 'temperature' || metric === 'apparentTemperature') {
     const hotVal = Math.max(temp, apparent);
-    if (hotVal >= 94) {
-      return makeStatePhenomenon('heat', 0.4 + (hotVal - 94) / 18, windDeg, wind, 0, hotVal >= 105);
-    }
+    if (hotVal >= 94) return emit('heat', 0.4 + (hotVal - 94) / 18, 0, hotVal >= 105);
     const coldVal = Math.min(temp, apparent);
-    if (coldVal <= 12) {
-      return makeStatePhenomenon('frost', 0.4 + (12 - coldVal) / 25, windDeg, wind, 0, coldVal <= 0);
-    }
+    if (coldVal <= 12) return emit('frost', 0.4 + (12 - coldVal) / 25, 0, coldVal <= 0);
   }
-
   if (metric === 'uvIndex' && (telemetry.uvIndex ?? 0) >= 7.5) {
-    return makeStatePhenomenon(
-      'uv',
-      0.4 + ((telemetry.uvIndex ?? 7.5) - 7.5) / 4.5,
-      windDeg,
-      wind,
-      0,
-      (telemetry.uvIndex ?? 0) >= 10.5,
-    );
+    const uv = telemetry.uvIndex ?? 7.5;
+    return emit('uv', 0.4 + (uv - 7.5) / 4.5, 0, uv >= 10.5);
   }
-
   if (metric === 'aqi' && (telemetry.usAqi ?? 0) >= 100) {
-    return makeStatePhenomenon(
-      'aqi',
-      0.4 + ((telemetry.usAqi ?? 100) - 100) / 120,
-      windDeg,
-      wind,
-      0,
-      (telemetry.usAqi ?? 0) >= 150,
-    );
+    const aqi = telemetry.usAqi ?? 100;
+    return emit('aqi', 0.4 + (aqi - 100) / 120, 0, aqi >= 150);
   }
-
   if (metric === 'humidity' && (telemetry.humidity ?? 0) >= 85) {
-    return makeStatePhenomenon('humidity', 0.35 + ((telemetry.humidity ?? 85) - 85) / 15, windDeg, wind, 0);
+    return emit('humidity', 0.35 + ((telemetry.humidity ?? 85) - 85) / 15);
   }
-
   if (wmo.category === 'cloudy') {
-    const cover = telemetry.cloudCoverPct ?? 85;
-    return makeStatePhenomenon('cloudy', 0.25 + (cover / 100) * 0.2, windDeg, wind, 0);
+    return emit('cloudy', 0.25 + ((telemetry.cloudCoverPct ?? 85) / 100) * 0.2);
   }
 
-  return makeStatePhenomenon(
-    wmo.category === 'partly-cloudy' ? 'partly-cloudy' : 'clear',
-    0,
-    windDeg,
-    wind,
-    0,
-  );
+  return emit(wmo.category === 'partly-cloudy' ? 'partly-cloudy' : 'clear', 0);
 }
 
-/**
- * Convenience helper to classify a resolved timeline/current weather snapshot slice.
- */
 export function classifySnapshotPhenomenon(
   slice: Pick<
     TimelinePoint,
@@ -378,13 +260,7 @@ export function classifySnapshotPhenomenon(
 ): StatePhenomenon {
   return classifyWeatherPhenomenon(
     {
-      weatherCode: slice.weatherCode,
-      precipitationMm: slice.precipitationMm,
-      temperatureF: slice.temperatureF,
-      apparentTemperatureF: slice.apparentTemperatureF,
-      windSpeedMph: slice.windSpeedMph,
-      windDirectionDeg: slice.windDirectionDeg,
-      humidity: slice.humidity,
+      ...slice,
       uvIndex: supplements?.uvIndex,
       usAqi: supplements?.usAqi,
       cloudCoverPct: supplements?.cloudCoverPct,
@@ -394,10 +270,29 @@ export function classifySnapshotPhenomenon(
   );
 }
 
-/**
- * Returns whether a classified phenomenon should render canvas FX on the map for the given metric.
- * In precipitation mode, dry overcast states stay clean so rain clouds stand out unambiguously.
- */
+export function classifyStatesPhenomena(
+  states: Record<string, StateWeatherSnapshot>,
+  timelineIndex: number,
+  useTimeline: boolean,
+  alertsByState: Record<string, WeatherAlert[]> | undefined,
+  metric: MetricLayer,
+  showcase = false,
+): Record<string, StatePhenomenon> {
+  if (showcase) return buildShowcasePhenomena(states);
+  const out: Record<string, StatePhenomenon> = {};
+  for (const [code, snap] of Object.entries(states)) {
+    const t = useTimeline ? snap.timeline[timelineIndex] : undefined;
+    out[code] = classifySnapshotPhenomenon(
+      t ?? snap.current,
+      snap.current,
+      alertsByState?.[code],
+      metric,
+    );
+  }
+  return out;
+}
+
+/** Suppress dry overcast clouds in precipitation mode so rain bands stand out clearly. */
 export function hasActiveMapFx(phenomenon: WeatherPhenomenon, metric: MetricLayer): boolean {
   if (phenomenon === 'clear' || phenomenon === 'partly-cloudy') return false;
   if (phenomenon === 'cloudy') return metric !== 'precipitation';
@@ -411,6 +306,18 @@ interface ShowcaseSpec {
   windMph: number;
   precipMm: number;
   severe?: boolean;
+}
+
+function specToPhenomenon(spec?: ShowcaseSpec): StatePhenomenon {
+  if (!spec) return makeStatePhenomenon('clear', 0, 240, 6, 0, false);
+  return makeStatePhenomenon(
+    spec.phenomenon,
+    spec.strength,
+    spec.windDeg,
+    spec.windMph,
+    spec.precipMm,
+    Boolean(spec.severe),
+  );
 }
 
 const SHOWCASE_BY_STATE: Record<string, ShowcaseSpec> = {
@@ -446,28 +353,12 @@ const SHOWCASE_BY_STATE: Record<string, ShowcaseSpec> = {
   HI: { phenomenon: 'rain', strength: 0.75, windDeg: 75, windMph: 14, precipMm: 2.4 },
 };
 
-/**
- * Generates a curated regional storm showcase across the 50 states so users can preview
- * every map weather animation simultaneously when FX Showcase mode is toggled on.
- */
 export function buildShowcasePhenomena(
   states: Record<string, StateWeatherSnapshot>,
 ): Record<string, StatePhenomenon> {
   const out: Record<string, StatePhenomenon> = {};
   for (const code of Object.keys(states)) {
-    const spec = SHOWCASE_BY_STATE[code];
-    if (!spec) {
-      out[code] = makeStatePhenomenon('clear', 0, 240, 6, 0, false);
-      continue;
-    }
-    out[code] = makeStatePhenomenon(
-      spec.phenomenon,
-      spec.strength,
-      spec.windDeg,
-      spec.windMph,
-      spec.precipMm,
-      Boolean(spec.severe),
-    );
+    out[code] = specToPhenomenon(SHOWCASE_BY_STATE[code]);
   }
   return out;
 }
@@ -485,24 +376,12 @@ const CITY_SHOWCASE_CYCLE: ShowcaseSpec[] = [
   { phenomenon: 'cyclone', strength: 0.92, windDeg: 140, windMph: 42, precipMm: 9.0, severe: true },
 ];
 
-/**
- * Generates localized showcase phenomena for Top 10 populated cities in Detailed State Mode.
- */
 export function buildCityShowcasePhenomena(
   cities: Pick<CityWeatherSnapshot, 'rank' | 'name'>[],
 ): Record<string, StatePhenomenon> {
   const out: Record<string, StatePhenomenon> = {};
   for (let i = 0; i < cities.length; i++) {
-    const city = cities[i]!;
-    const spec = CITY_SHOWCASE_CYCLE[i % CITY_SHOWCASE_CYCLE.length]!;
-    out[city.name] = makeStatePhenomenon(
-      spec.phenomenon,
-      spec.strength,
-      spec.windDeg,
-      spec.windMph,
-      spec.precipMm,
-      Boolean(spec.severe),
-    );
+    out[cities[i]!.name] = specToPhenomenon(CITY_SHOWCASE_CYCLE[i % CITY_SHOWCASE_CYCLE.length]);
   }
   return out;
 }

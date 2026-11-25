@@ -192,7 +192,7 @@ export function DrawerWeatherBackdrop({ phenomenon }: DrawerWeatherBackdropProps
               cx="0"
               cy="0"
               r="14"
-              className="ws-anim-sun fill-amber-400/25 dark:fill-amber-300/20"
+              className="fill-amber-400/25 dark:fill-amber-300/20"
             />
           </g>
         )}
