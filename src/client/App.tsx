@@ -5,10 +5,12 @@ import type {
   MetricLayer,
   RadarFrame,
   RadarFramesResponse,
+  StateCitiesWeatherResponse,
   StateDetailResponse,
   StateMeta,
   TempUnit,
   ThemeMode,
+  TopCityMeta,
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
@@ -44,6 +46,7 @@ export function App() {
 
   const [dataset, setDataset] = useState<WeatherDatasetResponse | null>(null);
   const [statesMeta, setStatesMeta] = useState<StateMeta[]>([]);
+  const [topCitiesByState, setTopCitiesByState] = useState<Record<string, TopCityMeta[]>>({});
   const [alertsData, setAlertsData] = useState<AlertsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,6 +56,13 @@ export function App() {
   const [stateDetail, setStateDetail] = useState<StateDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [compareCodes, setCompareCodes] = useState<string[]>([]);
+
+  const [detailedStateMode, setDetailedStateMode] = useState(false);
+  const [stateCitiesWeather, setStateCitiesWeather] = useState<StateCitiesWeatherResponse | null>(null);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [citiesError, setCitiesError] = useState<string | null>(null);
+  const [citiesRefreshCount, setCitiesRefreshCount] = useState(0);
+  const lastHandledRefreshRef = useRef(0);
 
   // Broadcast timeline animation state
   const [timelineIndex, setTimelineIndex] = useState<number>(
@@ -93,7 +103,12 @@ export function App() {
   useEffect(() => {
     fetch('/api/meta')
       .then((r) => r.json())
-      .then((data: { states: StateMeta[] }) => setStatesMeta(data.states))
+      .then((data: { states: StateMeta[]; topCitiesByState?: Record<string, TopCityMeta[]> }) => {
+        setStatesMeta(data.states);
+        if (data.topCitiesByState) {
+          setTopCitiesByState(data.topCitiesByState);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -256,6 +271,60 @@ export function App() {
     };
   }, [selectedCode, selectedCity, mode, startDate, endDate]);
 
+  useEffect(() => {
+    if (!detailedStateMode || !selectedCode) {
+      setStateCitiesWeather(null);
+      setCitiesLoading(false);
+      setCitiesError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setCitiesLoading(true);
+    setCitiesError(null);
+    const shouldRefresh = citiesRefreshCount > lastHandledRefreshRef.current;
+    lastHandledRefreshRef.current = citiesRefreshCount;
+
+    const params = new URLSearchParams({ mode });
+    if (mode === 'historical') {
+      if (activePresetId) params.set('preset', activePresetId);
+      params.set('startDate', startDate);
+      params.set('endDate', endDate);
+    }
+    if (shouldRefresh) params.set('refresh', '1');
+
+    fetch(`/api/state/${selectedCode}/cities?${params.toString()}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = (await r.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error ?? `Failed to load cities (${r.status})`);
+        }
+        return (await r.json()) as StateCitiesWeatherResponse;
+      })
+      .then((res) => {
+        if (!cancelled) setStateCitiesWeather(res);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setStateCitiesWeather(null);
+          setCitiesError(
+            err instanceof Error ? err.message : 'Unable to load top 10 cities weather',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCitiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailedStateMode, selectedCode, mode, startDate, endDate, activePresetId, citiesRefreshCount]);
+
+  const handleToggleDetailedStateMode = useCallback(() => {
+    setDetailedStateMode((prev) => !prev);
+  }, []);
+
   const handleToggleCompare = useCallback((code: string) => {
     setCompareCodes((prev) => {
       if (prev.includes(code)) return prev.filter((c) => c !== code);
@@ -330,9 +399,10 @@ export function App() {
         onSelectCustomDates={handleCustomDates}
         statesMeta={statesMeta}
         onSelectState={(code) => handleSelectState(code)}
-        onRefresh={() =>
-          void loadDataset({ targetMode: mode, start: startDate, end: endDate, refresh: true })
-        }
+        onRefresh={() => {
+          setCitiesRefreshCount((c) => c + 1);
+          void loadDataset({ targetMode: mode, start: startDate, end: endDate, refresh: true });
+        }}
         onOpenExport={() => {
           setExportScope(selectedCode ? 'state' : 'national');
           setExportOpen(true);
@@ -375,6 +445,13 @@ export function App() {
             alertPolygons={mode === 'live' ? alertsData?.featuresGeoJson : null}
             showAlertPolygons={mode === 'live' && showAlertPolygons}
             shortcutsEnabled={!exportOpen}
+            detailedStateMode={detailedStateMode}
+            onToggleDetailedStateMode={handleToggleDetailedStateMode}
+            stateCitiesWeather={stateCitiesWeather}
+            fallbackTopCities={selectedCode ? topCitiesByState[selectedCode] ?? [] : []}
+            citiesLoading={citiesLoading}
+            selectedCity={selectedCity || selectedMeta?.primaryCity || ''}
+            onSelectCity={setSelectedCity}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -411,6 +488,9 @@ export function App() {
           isLoading={detailLoading}
           mode={mode}
           unit={unit}
+          metric={metric}
+          timelineIndex={timelineIndex}
+          useTimeline={useTimeline}
           selectedCity={selectedCity || selectedMeta.primaryCity}
           onSelectCity={setSelectedCity}
           compareCodes={compareCodes}
@@ -422,6 +502,12 @@ export function App() {
             setExportOpen(true);
           }}
           onClose={() => handleSelectState(null)}
+          detailedStateMode={detailedStateMode}
+          onToggleDetailedStateMode={handleToggleDetailedStateMode}
+          citiesWeather={stateCitiesWeather}
+          citiesLoading={citiesLoading}
+          citiesError={citiesError}
+          fallbackTopCities={topCitiesByState[selectedCode] ?? []}
         />
       )}
 

@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MapCanvas } from '../src/client/components/MapCanvas';
+import { StateDrawer } from '../src/client/components/StateDrawer';
 import seedHistorical from '../src/server/data/seedHistorical.json';
-import type { WeatherDatasetResponse } from '../src/shared/types';
+import { STATE_BY_CODE } from '../src/server/data/states';
+import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
+import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries } from '../src/client/utils/mapGeometry';
 import {
   DEFAULT_ZOOM,
@@ -22,6 +25,7 @@ import {
   isInteractiveTarget,
   isSpaceKey,
   isViewModified,
+  layoutCityMarkerOffsets,
   panByOffset,
   zoomViewState,
 } from '../src/client/utils/mapViewport';
@@ -220,5 +224,113 @@ describe('MapCanvas Pan & Zoom Controls Markup', () => {
     );
 
     expect(htmlSelected).toContain('lg:right-[444px]');
+  });
+
+  test('places nearby city marker labels without colliding at identical positions', () => {
+    const offsets = layoutCityMarkerOffsets([
+      { id: 'Los Angeles', screenX: 200, screenY: 300, boxWidth: 100, boxHeight: 20 },
+      { id: 'Long Beach', screenX: 204, screenY: 305, boxWidth: 100, boxHeight: 20 },
+      { id: 'Anaheim', screenX: 210, screenY: 302, boxWidth: 90, boxHeight: 20 },
+    ]);
+
+    expect(offsets['Los Angeles']).toBeDefined();
+    expect(offsets['Long Beach']).toBeDefined();
+    expect(offsets['Anaheim']).toBeDefined();
+    // Adjacent dense cities pick distinct anchor directions
+    expect(offsets['Los Angeles']).not.toEqual(offsets['Long Beach']);
+  });
+
+  test('renders Detailed State Mode toggle, prompt, city markers, and StateDrawer Top 10 list', () => {
+    const dataset = seedHistorical as unknown as WeatherDatasetResponse;
+    const caCitiesMeta = TOP_CITIES_BY_STATE.CA ?? [];
+    const caCitiesWeather: StateCitiesWeatherResponse = {
+      mode: 'historical',
+      code: 'CA',
+      name: 'California',
+      cached: true,
+      fetchedAt: '2026-11-24T12:00:00Z',
+      startDate: '2024-01-12',
+      endDate: '2024-01-16',
+      timelineHours: dataset.timelineHours,
+      cities: caCitiesMeta.map((c) => ({
+        rank: c.rank,
+        name: c.name,
+        population: c.population,
+        lat: c.lat,
+        lon: c.lon,
+        timezone: 'UTC',
+        current: dataset.states.CA!.current,
+        timeline: dataset.states.CA!.timeline,
+      })),
+    };
+
+    const mapArmedHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'temperature',
+        unit: 'F',
+        isDark: false,
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCode: null,
+        onSelectState: () => {},
+        detailedStateMode: true,
+        onToggleDetailedStateMode: () => {},
+      }),
+    );
+    expect(mapArmedHtml).toContain('aria-label="Disable detailed state mode"');
+    expect(mapArmedHtml).toContain('>D</kbd>');
+    expect(mapArmedHtml).toContain('Click any state to zoom &amp; load top 10 cities');
+
+    const mapFocusedHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'temperature',
+        unit: 'F',
+        isDark: false,
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCode: 'CA',
+        onSelectState: () => {},
+        detailedStateMode: true,
+        onToggleDetailedStateMode: () => {},
+        stateCitiesWeather: caCitiesWeather,
+        selectedCity: 'San Jose',
+        onSelectCity: () => {},
+      }),
+    );
+    expect(mapFocusedHtml).toContain('1. Los Angeles');
+    expect(mapFocusedHtml).toContain('3. San Jose');
+    expect(mapFocusedHtml).toContain('10. Anaheim');
+
+    const drawerHtml = renderToStaticMarkup(
+      createElement(StateDrawer, {
+        meta: STATE_BY_CODE.CA!,
+        snapshot: dataset.states.CA!,
+        detail: null,
+        isLoading: false,
+        mode: 'historical',
+        unit: 'F',
+        metric: 'temperature',
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCity: 'San Jose',
+        onSelectCity: () => {},
+        compareCodes: [],
+        onToggleCompare: () => {},
+        allStates: dataset.states,
+        onSelectState: () => {},
+        onPrintState: () => {},
+        onClose: () => {},
+        detailedStateMode: true,
+        onToggleDetailedStateMode: () => {},
+        citiesWeather: caCitiesWeather,
+      }),
+    );
+    expect(drawerHtml).toContain('Top 10 Populated Cities');
+    expect(drawerHtml).toContain('Los Angeles');
+    expect(drawerHtml).toContain('3.82M');
+    expect(drawerHtml).toContain('San Jose');
+    expect(drawerHtml).toContain('Anaheim');
   });
 });

@@ -223,3 +223,90 @@ export function getZoomShortcutAction(e: KeyLike): 'in' | 'out' | 'reset' | null
   if (e.key === '0') return 'reset';
   return null;
 }
+
+export interface CityMarkerLayoutInput {
+  id: string;
+  screenX: number;
+  screenY: number;
+  boxWidth: number;
+  boxHeight: number;
+}
+
+interface PlacedRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function rectOverlapArea(a: PlacedRect, b: PlacedRect): number {
+  const dx = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const dy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return dx > 0 && dy > 0 ? dx * dy : 0;
+}
+
+/**
+ * Greedily place city label pills around their true projected dots in rank order
+ * to minimize label overlap in dense metropolitan clusters.
+ */
+export function layoutCityMarkerOffsets(
+  items: CityMarkerLayoutInput[],
+): Record<string, { ox: number; oy: number }> {
+  const placed: PlacedRect[] = items.map((item) => ({
+    left: item.screenX - 5,
+    top: item.screenY - 5,
+    right: item.screenX + 5,
+    bottom: item.screenY + 5,
+  }));
+  const offsets: Record<string, { ox: number; oy: number }> = {};
+
+  for (const item of items) {
+    const halfW = item.boxWidth / 2;
+    const halfH = item.boxHeight / 2;
+    const candidates: Array<[number, number]> = [
+      [0, -(halfH + 8)],
+      [0, halfH + 8],
+      [halfW + 10, 0],
+      [-(halfW + 10), 0],
+      [halfW + 8, -(halfH + 6)],
+      [-(halfW + 8), -(halfH + 6)],
+      [halfW + 8, halfH + 6],
+      [-(halfW + 8), halfH + 6],
+      [0, -(halfH + 26)],
+      [0, halfH + 26],
+    ];
+
+    let bestOffset: [number, number] = candidates[0]!;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const [ox, oy] of candidates) {
+      const rect: PlacedRect = {
+        left: item.screenX + ox - halfW,
+        top: item.screenY + oy - halfH,
+        right: item.screenX + ox + halfW,
+        bottom: item.screenY + oy + halfH,
+      };
+
+      let overlap = 0;
+      for (const prev of placed) {
+        overlap += rectOverlapArea(rect, prev);
+      }
+
+      if (overlap < bestScore) {
+        bestScore = overlap;
+        bestOffset = [ox, oy];
+        if (overlap === 0) break;
+      }
+    }
+
+    offsets[item.id] = { ox: bestOffset[0], oy: bestOffset[1] };
+    placed.push({
+      left: item.screenX + bestOffset[0] - halfW,
+      top: item.screenY + bestOffset[1] - halfH,
+      right: item.screenX + bestOffset[0] + halfW,
+      bottom: item.screenY + bestOffset[1] + halfH,
+    });
+  }
+
+  return offsets;
+}

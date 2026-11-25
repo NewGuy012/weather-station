@@ -6,18 +6,23 @@ import {
   Droplets,
   Gauge,
   GitCompare,
+  MapPinned,
   Printer,
   Sunrise,
   Sunset,
+  Users,
   Wind,
   X,
 } from 'lucide-react';
 import { useState } from 'react';
 import type {
+  MetricLayer,
+  StateCitiesWeatherResponse,
   StateDetailResponse,
   StateMeta,
   StateWeatherSnapshot,
   TempUnit,
+  TopCityMeta,
   WeatherMode,
 } from '../../shared/types';
 import {
@@ -29,7 +34,9 @@ import {
   uvCategory,
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
+import { METRIC_SCALES } from '../utils/scales';
 import { HourlyChart } from './HourlyChart';
+import { resolveStateSlice } from './MapCanvas';
 import { WeatherIcon } from './WeatherIcon';
 
 interface StateDrawerProps {
@@ -39,6 +46,9 @@ interface StateDrawerProps {
   isLoading: boolean;
   mode: WeatherMode;
   unit: TempUnit;
+  metric?: MetricLayer;
+  timelineIndex?: number;
+  useTimeline?: boolean;
   selectedCity: string;
   onSelectCity: (city: string) => void;
   compareCodes: string[];
@@ -47,6 +57,18 @@ interface StateDrawerProps {
   onSelectState: (code: string) => void;
   onPrintState: () => void;
   onClose: () => void;
+  detailedStateMode?: boolean;
+  onToggleDetailedStateMode?: () => void;
+  citiesWeather?: StateCitiesWeatherResponse | null;
+  citiesLoading?: boolean;
+  citiesError?: string | null;
+  fallbackTopCities?: TopCityMeta[];
+}
+
+function formatPopulation(pop: number): string {
+  if (pop >= 1_000_000) return `${(pop / 1_000_000).toFixed(2)}M`;
+  if (pop >= 10_000) return `${Math.round(pop / 1_000)}k`;
+  return `${(pop / 1_000).toFixed(1)}k`;
 }
 
 export function StateDrawer({
@@ -56,6 +78,9 @@ export function StateDrawer({
   isLoading,
   mode,
   unit,
+  metric = 'temperature',
+  timelineIndex = 0,
+  useTimeline = false,
   selectedCity,
   onSelectCity,
   compareCodes,
@@ -64,6 +89,12 @@ export function StateDrawer({
   onSelectState,
   onPrintState,
   onClose,
+  detailedStateMode = false,
+  onToggleDetailedStateMode,
+  citiesWeather = null,
+  citiesLoading = false,
+  citiesError = null,
+  fallbackTopCities = [],
 }: StateDrawerProps) {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
 
@@ -102,6 +133,26 @@ export function StateDrawer({
         </div>
 
         <div className="flex items-center gap-1">
+          {onToggleDetailedStateMode && (
+            <button
+              type="button"
+              onClick={onToggleDetailedStateMode}
+              aria-pressed={detailedStateMode}
+              title={
+                detailedStateMode
+                  ? 'Exit Detailed State Mode (D)'
+                  : 'Zoom in & load top 10 populated cities (D)'
+              }
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                detailedStateMode
+                  ? 'bg-emerald-600 text-white'
+                  : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <MapPinned size={12} />
+              <span>Top 10</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onToggleCompare(meta.code)}
@@ -134,26 +185,28 @@ export function StateDrawer({
         </div>
       </div>
 
-      {/* Multi-City Selector */}
-      <div className="flex flex-wrap gap-1 border-b border-slate-100 px-4 py-2 dark:border-slate-800">
-        {meta.cities.map((c) => {
-          const active = c.name.toLowerCase() === selectedCity.toLowerCase();
-          return (
-            <button
-              key={c.name}
-              type="button"
-              onClick={() => onSelectCity(c.name)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-                active
-                  ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              {c.name}
-            </button>
-          );
-        })}
-      </div>
+      {/* Multi-City Selector (hidden when full Top 10 list is active below) */}
+      {!detailedStateMode && (
+        <div className="flex flex-wrap gap-1 border-b border-slate-100 px-4 py-2 dark:border-slate-800">
+          {meta.cities.map((c) => {
+            const active = c.name.toLowerCase() === selectedCity.toLowerCase();
+            return (
+              <button
+                key={c.name}
+                type="button"
+                onClick={() => onSelectCity(c.name)}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
+                  active
+                    ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Scrollable Body */}
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3.5">
@@ -187,6 +240,111 @@ export function StateDrawer({
             </div>
           </div>
         </div>
+
+        {/* Top 10 Populated Cities Card (Detailed State Mode) */}
+        {detailedStateMode && (
+          <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3 dark:border-emerald-500/25 dark:bg-emerald-950/20">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Users size={13} className="text-emerald-600 dark:text-emerald-400" />
+                <span className="text-[11px] font-semibold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
+                  Top 10 Populated Cities
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {citiesLoading ? 'Fetching...' : 'Click city for chart'}
+              </span>
+            </div>
+
+            {citiesError ? (
+              <div className="rounded-lg bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                {citiesError}
+              </div>
+            ) : citiesWeather && citiesWeather.code === meta.code ? (
+              <div className="space-y-1">
+                {citiesWeather.cities.map((c) => {
+                  const slice = resolveStateSlice(c, timelineIndex, useTimeline);
+                  const active = c.name.toLowerCase() === selectedCity.toLowerCase();
+                  const scaleConfig = METRIC_SCALES[metric];
+                  const rawMetric = slice.metricSource
+                    ? scaleConfig.extractTimeline(slice.metricSource, c.current)
+                    : scaleConfig.extractCurrent(c.current);
+                  const metricDisplay = scaleConfig.formatMapValue(rawMetric, unit);
+
+                  return (
+                    <button
+                      key={`${c.rank}-${c.name}`}
+                      type="button"
+                      onClick={() => onSelectCity(c.name)}
+                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                        active
+                          ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
+                          : 'bg-white/85 text-slate-800 hover:bg-white dark:bg-slate-900/75 dark:text-slate-100 dark:hover:bg-slate-900'
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`w-4 shrink-0 text-right tabular-nums text-[10px] font-semibold ${
+                            active ? 'text-white/80 dark:text-slate-950/75' : 'text-slate-400'
+                          }`}
+                        >
+                          {c.rank}
+                        </span>
+                        <span className="truncate font-medium">{c.name}</span>
+                        <span
+                          className={`shrink-0 tabular-nums text-[10px] ${
+                            active ? 'text-white/75 dark:text-slate-950/70' : 'text-slate-400'
+                          }`}
+                        >
+                          {formatPopulation(c.population)}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 tabular-nums">
+                        <WeatherIcon code={slice.weatherCode} size={14} />
+                        <span className="font-semibold">
+                          {formatTemp(slice.temperatureF, unit, true)}
+                        </span>
+                        <span
+                          className={`w-14 text-right text-[10px] ${
+                            active ? 'text-white/85 dark:text-slate-950/80' : 'text-slate-400'
+                          }`}
+                        >
+                          {metric === 'temperature'
+                            ? formatWind(slice.windSpeedMph, unit)
+                            : metricDisplay}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {(fallbackTopCities.length > 0
+                  ? fallbackTopCities
+                  : Array.from({ length: 10 }, (_, idx) => ({
+                      rank: idx + 1,
+                      name: `City ${idx + 1}`,
+                      population: 0,
+                      lat: 0,
+                      lon: 0,
+                    }))
+                ).map((c) => (
+                  <div
+                    key={c.rank}
+                    className="flex items-center justify-between rounded-lg bg-white/60 px-2.5 py-1.5 text-xs text-slate-500 dark:bg-slate-900/50 dark:text-slate-400"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 text-right tabular-nums text-[10px]">{c.rank}</span>
+                      <span>{c.name}</span>
+                    </div>
+                    <span className="h-3 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Active NWS Alerts (Live Mode) */}
         {mode === 'live' && detail?.alerts && detail.alerts.length > 0 && (

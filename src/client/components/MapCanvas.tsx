@@ -1,10 +1,12 @@
-import { Hand, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Hand, MapPinned, Minus, Plus, RotateCcw } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GeoJsonFeatureCollection,
   MetricLayer,
+  StateCitiesWeatherResponse,
   StateWeatherSnapshot,
   TempUnit,
+  TopCityMeta,
   WeatherAlert,
 } from '../../shared/types';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
@@ -18,6 +20,7 @@ import {
   type StageSize,
   ZOOM_BUTTON_STEP,
   clampPan,
+  computeStateFocusView,
   getArrowPanDelta,
   getWheelZoomFactor,
   getZoomShortcutAction,
@@ -25,6 +28,7 @@ import {
   isInteractiveTarget,
   isSpaceKey,
   isViewModified,
+  layoutCityMarkerOffsets,
   panByOffset,
   zoomViewState,
 } from '../utils/mapViewport';
@@ -47,6 +51,14 @@ interface MapCanvasProps {
   showAlertPolygons?: boolean;
   /** Disable keyboard shortcuts when a modal dialog is open */
   shortcutsEnabled?: boolean;
+  /** Detailed state inspection mode: auto-zoom selected state & render top 10 cities */
+  detailedStateMode?: boolean;
+  onToggleDetailedStateMode?: () => void;
+  stateCitiesWeather?: StateCitiesWeatherResponse | null;
+  fallbackTopCities?: TopCityMeta[];
+  citiesLoading?: boolean;
+  selectedCity?: string;
+  onSelectCity?: (cityName: string) => void;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
   /** Exposed SVG ref for PNG export */
@@ -56,7 +68,7 @@ interface MapCanvasProps {
 const COMPACT_NE_CODES = new Set(['RI', 'DE', 'CT', 'NJ', 'MD', 'MA', 'NH', 'VT']);
 
 export function resolveStateSlice(
-  snap: StateWeatherSnapshot,
+  snap: Pick<StateWeatherSnapshot, 'current' | 'timeline'>,
   timelineIndex: number,
   useTimeline: boolean,
 ) {
@@ -86,6 +98,13 @@ export function MapCanvas({
   alertPolygons,
   showAlertPolygons = false,
   shortcutsEnabled = true,
+  detailedStateMode = false,
+  onToggleDetailedStateMode,
+  stateCitiesWeather = null,
+  fallbackTopCities = [],
+  citiesLoading = false,
+  selectedCity = '',
+  onSelectCity,
   overlays,
   mapContainerRef,
 }: MapCanvasProps) {
@@ -306,6 +325,12 @@ export function MapCanvas({
         return;
       }
 
+      if (e.key.toLowerCase() === 'd' && !e.repeat && onToggleDetailedStateMode) {
+        e.preventDefault();
+        onToggleDetailedStateMode();
+        return;
+      }
+
       if (e.key === 'Escape' && panModeRef.current) {
         setPanMode(false);
         return;
@@ -351,7 +376,7 @@ export function MapCanvas({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [shortcutsEnabled, getStageSize, zoomByStep]);
+  }, [shortcutsEnabled, getStageSize, zoomByStep, onToggleDetailedStateMode]);
 
   const resetView = useCallback(() => {
     setView(INITIAL_MAP_VIEW);
@@ -369,6 +394,115 @@ export function MapCanvas({
     [geometries, selectedCode],
   );
   const selectedSnap = selectedCode ? states[selectedCode] : undefined;
+
+  const wasFocusedRef = useRef(false);
+  useEffect(() => {
+    if (detailedStateMode && selectedGeo) {
+      const stageSize = getStageSize();
+      const vpEl = viewportRef.current;
+      const viewportSize = {
+        width: vpEl?.clientWidth || stageSize.width,
+        height: vpEl?.clientHeight || stageSize.height,
+      };
+      const rightInsetPx = viewportSize.width >= 640 ? 436 : 0;
+      wasFocusedRef.current = true;
+      setView(
+        computeStateFocusView({
+          bounds: selectedGeo.bounds,
+          mapWidth: MAP_WIDTH,
+          mapHeight: MAP_HEIGHT,
+          stageSize,
+          viewportSize,
+          rightInsetPx,
+        }),
+      );
+      return;
+    }
+
+    if (wasFocusedRef.current) {
+      wasFocusedRef.current = false;
+      setView(INITIAL_MAP_VIEW);
+    }
+  }, [detailedStateMode, selectedGeo, getStageSize]);
+
+  const cityMarkers = useMemo(() => {
+    if (!detailedStateMode || !selectedCode) return [];
+
+    const activeCities =
+      stateCitiesWeather && stateCitiesWeather.code === selectedCode
+        ? stateCitiesWeather.cities
+        : null;
+
+    const baseItems = activeCities
+      ? activeCities.map((c) => {
+          const proj = usProjection([c.lon, c.lat]);
+          if (!proj) return null;
+          const slice = resolveStateSlice(c, timelineIndex, useTimeline);
+          const rawMetric = slice.metricSource
+            ? scaleConfig.extractTimeline(slice.metricSource, c.current)
+            : scaleConfig.extractCurrent(c.current);
+          const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
+          const fill = interpolateColor(rawMetric, scaleConfig.stops, isDark);
+          const label = `${c.name} ${displayVal}`;
+          const boxWidth = Math.max(76, Math.min(138, label.length * 5.6 + 22));
+          return {
+            rank: c.rank,
+            name: c.name,
+            population: c.population,
+            px: proj[0],
+            py: proj[1],
+            displayVal,
+            fill,
+            boxWidth,
+            boxHeight: 20,
+            loaded: true,
+          };
+        })
+      : fallbackTopCities.map((c) => {
+          const proj = usProjection([c.lon, c.lat]);
+          if (!proj) return null;
+          const boxWidth = Math.max(66, Math.min(120, c.name.length * 5.6 + 18));
+          return {
+            rank: c.rank,
+            name: c.name,
+            population: c.population,
+            px: proj[0],
+            py: proj[1],
+            displayVal: '…',
+            fill: isDark ? '#38bdf8' : '#0284c7',
+            boxWidth,
+            boxHeight: 18,
+            loaded: false,
+          };
+        });
+
+    const projected = baseItems.filter((item): item is NonNullable<typeof item> => item !== null);
+    const offsets = layoutCityMarkerOffsets(
+      projected.map((item) => ({
+        id: item.name,
+        screenX: item.px * view.zoom,
+        screenY: item.py * view.zoom,
+        boxWidth: item.boxWidth,
+        boxHeight: item.boxHeight,
+      })),
+    );
+
+    return projected.map((item) => ({
+      ...item,
+      offset: offsets[item.name] ?? { ox: 0, oy: -18 },
+    }));
+  }, [
+    detailedStateMode,
+    selectedCode,
+    stateCitiesWeather,
+    fallbackTopCities,
+    timelineIndex,
+    useTimeline,
+    scaleConfig,
+    unit,
+    isDark,
+    view.zoom,
+  ]);
 
   const hoveredSnap = hovered ? states[hovered.code] : undefined;
   const hoveredSlice = hoveredSnap ? resolveStateSlice(hoveredSnap, timelineIndex, useTimeline) : null;
@@ -403,7 +537,7 @@ export function MapCanvas({
       <div
         ref={setStageRef}
         className={`relative w-full max-w-[1180px] ${
-          isDragging ? 'transition-none' : 'transition-transform duration-150 ease-out'
+          isDragging ? 'transition-none' : 'transition-transform duration-300 ease-out'
         }`}
         style={{
           aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}`,
@@ -461,6 +595,7 @@ export function MapCanvas({
                   key={item.meta.code}
                   d={item.pathD}
                   fill={fill}
+                  fillOpacity={detailedStateMode && selectedCode && !isSelected ? 0.35 : 1}
                   stroke={
                     isSelected
                       ? isDark
@@ -474,10 +609,12 @@ export function MapCanvas({
                           ? '#0f172a'
                           : '#ffffff'
                   }
-                  strokeWidth={isSelected ? 2.2 : isHovered ? 1.6 : 0.9}
+                  strokeWidth={
+                    (isSelected ? 2.2 : isHovered ? 1.6 : 0.9) / Math.sqrt(Math.max(1, view.zoom))
+                  }
                   className={`${
                     isDragging ? 'cursor-grabbing' : isPanActive ? 'cursor-grab' : 'cursor-pointer'
-                  } transition-[fill,stroke-width] duration-300`}
+                  } transition-[fill,fill-opacity,stroke-width] duration-300`}
                   onMouseEnter={(e) => {
                     if (!isDragging) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
                   }}
@@ -532,6 +669,7 @@ export function MapCanvas({
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
         >
           {geometries.map((item) => {
+            if (detailedStateMode && item.meta.code === selectedCode) return null;
             const snap = states[item.meta.code];
             if (!snap) return null;
 
@@ -624,7 +762,7 @@ export function MapCanvas({
                   </g>
                 )}
 
-                {isSelected && (
+                {isSelected && !detailedStateMode && (
                   <circle
                     cx={item.cityPoint[0]}
                     cy={item.cityPoint[1]}
@@ -637,10 +775,84 @@ export function MapCanvas({
               </g>
             );
           })}
+
+          {/* Detailed State Mode: Top 10 Populated City Markers */}
+          {cityMarkers.map((city) => {
+            const invScale = 1 / Math.max(0.8, view.zoom);
+            const isActiveCity = city.name.toLowerCase() === selectedCity.toLowerCase();
+            const { ox, oy } = city.offset;
+            const showLeader = Math.hypot(ox, oy) > 14;
+            const halfW = city.boxWidth / 2;
+            const halfH = city.boxHeight / 2;
+
+            return (
+              <g
+                key={`top-city-${city.rank}-${city.name}`}
+                transform={`translate(${city.px}, ${city.py}) scale(${invScale})`}
+                className={isPanActive ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (suppressClickRef.current || isPanActive) return;
+                  onSelectCity?.(city.name);
+                }}
+              >
+                {showLeader && (
+                  <line
+                    x1={0}
+                    y1={0}
+                    x2={ox}
+                    y2={oy}
+                    stroke={isDark ? 'rgba(148,163,184,0.65)' : 'rgba(51,65,85,0.55)'}
+                    strokeWidth={1}
+                  />
+                )}
+                <circle
+                  cx={0}
+                  cy={0}
+                  r={isActiveCity ? 5 : 3.8}
+                  fill={isActiveCity ? '#0284c7' : city.fill}
+                  stroke="#ffffff"
+                  strokeWidth={1.5}
+                />
+                <g transform={`translate(${ox}, ${oy})`}>
+                  <rect
+                    x={-halfW}
+                    y={-halfH}
+                    width={city.boxWidth}
+                    height={city.boxHeight}
+                    rx={6}
+                    fill={
+                      isActiveCity
+                        ? '#0284c7'
+                        : isDark
+                          ? 'rgba(15, 23, 42, 0.92)'
+                          : 'rgba(255, 255, 255, 0.94)'
+                    }
+                    stroke={
+                      isActiveCity
+                        ? '#38bdf8'
+                        : isDark
+                          ? 'rgba(148,163,184,0.4)'
+                          : 'rgba(148,163,184,0.55)'
+                    }
+                    strokeWidth={isActiveCity ? 1.2 : 0.8}
+                  />
+                  <text
+                    textAnchor="middle"
+                    y={3.5}
+                    className="tabular-nums text-[9.5px] font-semibold"
+                    fill={isActiveCity ? '#ffffff' : isDark ? '#f8fafc' : '#0f172a'}
+                  >
+                    {city.rank}. {city.name} {city.displayVal}
+                  </text>
+                </g>
+              </g>
+            );
+          })}
         </svg>
 
-        {/* Pinned tooltip shown when a state is clicked */}
-        {selectedGeo && selectedSnap && selectedSlice && (
+        {/* Pinned tooltip shown when a state is clicked (hidden in Detailed State Mode) */}
+        {!detailedStateMode && selectedGeo && selectedSnap && selectedSlice && (
           <PinnedStateTooltip
             data={{
               snapshot: selectedSnap,
@@ -663,6 +875,17 @@ export function MapCanvas({
         )}
       </div>
 
+      {/* Detailed State Mode Prompt / Loading Pill */}
+      {detailedStateMode && (!selectedCode || citiesLoading) && (
+        <div
+          className="no-print pointer-events-none fixed top-20 left-1/2 z-20 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-white/90 px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-md dark:border-emerald-400/30 dark:bg-slate-900/90 dark:text-slate-200"
+        >
+          {citiesLoading
+            ? `Loading top 10 cities in ${selectedGeo?.meta.name ?? selectedCode}...`
+            : 'Detailed State Mode — Click any state to zoom & load top 10 cities'}
+        </div>
+      )}
+
       {/* Hover Tooltip */}
       {!isDragging && hovered && hoveredSnap && hoveredSlice && hovered.code !== selectedCode && (
         <HoverTooltip
@@ -684,7 +907,7 @@ export function MapCanvas({
         />
       )}
 
-      {/* Map Pan & Zoom Controls */}
+      {/* Map Detailed Mode, Pan & Zoom Controls */}
       <div
         className={`no-print absolute bottom-24 z-20 flex flex-col gap-1 rounded-xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md transition-[right] duration-200 dark:border-slate-700/60 dark:bg-slate-900/85 ${
           selectedCode ? 'right-4 lg:right-[444px]' : 'right-4'
@@ -692,6 +915,40 @@ export function MapCanvas({
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {onToggleDetailedStateMode && (
+          <>
+            <button
+              type="button"
+              onClick={handleControlClick(onToggleDetailedStateMode)}
+              aria-label={
+                detailedStateMode ? 'Disable detailed state mode' : 'Enable detailed state mode'
+              }
+              aria-pressed={detailedStateMode}
+              title={
+                detailedStateMode
+                  ? 'Exit detailed state mode (D)'
+                  : 'Detailed state mode: zoom into state & show top 10 cities (D)'
+              }
+              className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 transition ${
+                detailedStateMode
+                  ? 'bg-emerald-600 text-white shadow-xs dark:bg-emerald-500 dark:text-slate-950'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <MapPinned size={14} />
+              <kbd
+                className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+                  detailedStateMode
+                    ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                    : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                }`}
+              >
+                D
+              </kbd>
+            </button>
+            <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+          </>
+        )}
         <button
           type="button"
           onClick={handleControlClick(() => setPanMode((v) => !v))}
