@@ -23,8 +23,6 @@ Install dependencies with [Bun](https://bun.sh/) and start the app locally:
 ```bash
 bun install
 bun run dev        # Vite + Cloudflare Workers dev server
-# or
-bun run dev:bun    # Local Bun server (no Node.js required)
 ```
 
 <details>
@@ -45,7 +43,7 @@ bun run seed                     # Regenerate the default historical snapshot
 | Area | Built With |
 | :--- | :--- |
 | Frontend | React 19, TypeScript, Tailwind CSS v4, `d3-geo` + `us-atlas` |
-| Backend & Edge | Cloudflare Workers, Hono, Vite 7, `bun:sqlite` (local cache) |
+| Backend & Edge | Cloudflare Workers, Vite 7, Edge Cache API |
 | Weather & Radar | Open-Meteo (Forecast, ERA5, Air Quality), NOAA/NWS Alerts, NOAA MRMS & IEM NEXRAD |
 
 ## Project Structure
@@ -54,7 +52,7 @@ bun run seed                     # Regenerate the default historical snapshot
 src/
 ├── client/   # React UI, interactive map, radar/wind overlays, print & export views
 ├── worker/   # Cloudflare Worker entrypoint & edge cache adapter
-├── server/   # API router, weather providers, SQLite cache, Bun dev server
-└── shared/   # Shared types, weather codes, presets, and unit formatters
+├── server/   # API router, Open-Meteo/NWS/radar providers, city dataset
+└── shared/   # Shared types, state metadata, radar bounds, weather codes, presets, units
 tests/        # Unit, Worker, and API test suites
 ```

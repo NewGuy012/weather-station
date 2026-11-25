@@ -4,88 +4,79 @@ import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/
 import { WorkerWeatherCache, clearWorkerMemoryCache } from '../src/worker/cache';
 import workerApp from '../src/worker/index';
 
-describe('API Router', () => {
+describe('API Router & Security', () => {
   test('serves health, meta, and default historical seed dataset with 50 states', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
 
     const healthRes = await handleApiRequest(new Request('http://localhost/api/health'), cache);
     expect(healthRes?.status).toBe(200);
+    expect(healthRes?.headers.get('X-Content-Type-Options')).toBe('nosniff');
 
     const metaRes = await handleApiRequest(new Request('http://localhost/api/meta'), cache);
-    expect(metaRes?.status).toBe(200);
     const metaJson = (await metaRes?.json()) as {
       states: unknown[];
       topCitiesByState: Record<string, unknown[]>;
       defaultMode: string;
     };
+    expect(metaRes?.status).toBe(200);
     expect(metaJson.states).toHaveLength(50);
     expect(Object.keys(metaJson.topCitiesByState)).toHaveLength(50);
     expect(metaJson.topCitiesByState.CA).toHaveLength(10);
     expect(metaJson.defaultMode).toBe('historical');
 
     const statesRes = await handleApiRequest(new Request('http://localhost/api/states'), cache);
-    expect(statesRes?.status).toBe(200);
     const data = (await statesRes?.json()) as WeatherDatasetResponse;
+    expect(statesRes?.status).toBe(200);
     expect(data.mode).toBe('historical');
     expect(data.source).toBe('seed-archive');
     expect(Object.keys(data.states)).toHaveLength(50);
     expect(data.timelineHours.length).toBeGreaterThanOrEqual(24);
   });
 
-  test('validates query parameters and returns proper error codes', async () => {
+  test('enforces HTTP methods, input validation, and cache hits', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
 
-    const badRange = await handleApiRequest(
-      new Request('http://localhost/api/states?mode=historical&startDate=2024-02-10&endDate=2024-02-01'),
+    const badMethod = await handleApiRequest(
+      new Request('http://localhost/api/states', { method: 'POST' }),
       cache,
     );
-    expect(badRange?.status).toBe(400);
+    expect(badMethod?.status).toBe(405);
+    expect(badMethod?.headers.get('Allow')).toBe('GET, HEAD');
 
-    const tooLong = await handleApiRequest(
-      new Request('http://localhost/api/states?mode=historical&startDate=2024-01-01&endDate=2024-01-25'),
-      cache,
-    );
-    expect(tooLong?.status).toBe(400);
+    const invalidCases = [
+      'http://localhost/api/states?mode=historical&startDate=2024-02-10&endDate=2024-02-01',
+      'http://localhost/api/states?mode=historical&startDate=2024-01-01&endDate=2024-01-25',
+      'http://localhost/api/states?mode=historical&startDate=2024-99-99',
+      'http://localhost/api/states?mode=historical&startDate=1939-12-31&endDate=1939-12-31',
+      'http://localhost/api/state/CA?mode=historical&startDate=2024-01-01&endDate=2024-01-25',
+      'http://localhost/api/state/CA?city=NotARealCity',
+      'http://localhost/api/state/CA/cities?mode=historical&startDate=2024-02-10&endDate=2024-02-01',
+      'http://localhost/api/radar/frames?mode=historical&anchor=invalid-ts',
+      'http://localhost/api/radar/image?region=mars&ts=2026-11-18T18:00:00Z',
+      'http://localhost/api/radar/image?region=conus&ts=not-a-timestamp',
+    ];
+    for (const url of invalidCases) {
+      const res = await handleApiRequest(new Request(url), cache);
+      expect(res?.status).toBe(400);
+    }
 
-    const unknownState = await handleApiRequest(
-      new Request('http://localhost/api/state/ZZ'),
-      cache,
-    );
-    expect(unknownState?.status).toBe(404);
-
-    const badRegion = await handleApiRequest(
-      new Request('http://localhost/api/radar/image?region=mars&ts=2026-11-18T18:00:00Z'),
-      cache,
-    );
-    expect(badRegion?.status).toBe(400);
+    for (const url of [
+      'http://localhost/api/state/ZZ',
+      'http://localhost/api/state/ZZ/cities',
+      'http://localhost/api/state/CA/unknown',
+    ]) {
+      const res = await handleApiRequest(new Request(url), cache);
+      expect(res?.status).toBe(404);
+    }
 
     const histFrames = await handleApiRequest(
       new Request('http://localhost/api/radar/frames?mode=historical&anchor=2026-11-18T18:00:00Z'),
       cache,
     );
     expect(histFrames?.status).toBe(200);
-    const framesBody = (await histFrames?.json()) as { frames: unknown[] };
-    expect(framesBody.frames).toHaveLength(12);
-
-    const unknownCitiesState = await handleApiRequest(
-      new Request('http://localhost/api/state/ZZ/cities'),
-      cache,
-    );
-    expect(unknownCitiesState?.status).toBe(404);
-
-    const unknownSubpath = await handleApiRequest(
-      new Request('http://localhost/api/state/CA/unknown'),
-      cache,
-    );
-    expect(unknownSubpath?.status).toBe(404);
-
-    const badCitiesRange = await handleApiRequest(
-      new Request('http://localhost/api/state/CA/cities?mode=historical&startDate=2024-02-10&endDate=2024-02-01'),
-      cache,
-    );
-    expect(badCitiesRange?.status).toBe(400);
+    expect(((await histFrames?.json()) as { frames: unknown[] }).frames).toHaveLength(12);
 
     const cachedCitiesPayload: StateCitiesWeatherResponse = {
       mode: 'live',
@@ -111,7 +102,7 @@ describe('API Router', () => {
 });
 
 describe('Cloudflare Worker Entrypoint & Cache', () => {
-  test('WorkerWeatherCache stores, retrieves, and expires JSON and binary entries', async () => {
+  test('WorkerWeatherCache stores, expires, and reports stats for JSON and binary entries', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
     const now = 2_000_000;
@@ -128,12 +119,7 @@ describe('Cloudflare Worker Entrypoint & Cache', () => {
     const blobHit = await cache.getBlob('radar:sample', now + 500);
     expect(blobHit?.contentType).toBe('image/png');
     expect(Array.from(blobHit?.data ?? [])).toEqual([137, 80, 78, 71]);
-
-    expect(cache.stats()).toEqual({
-      jsonCount: 1,
-      blobCount: 1,
-      backend: 'cloudflare-workers',
-    });
+    expect(cache.stats()).toEqual({ jsonCount: 1, blobCount: 1, backend: 'cloudflare-workers' });
 
     clearWorkerMemoryCache();
   });
@@ -143,17 +129,9 @@ describe('Cloudflare Worker Entrypoint & Cache', () => {
 
     const healthRes = await workerApp.fetch(new Request('http://localhost/api/health'));
     expect(healthRes.status).toBe(200);
-    const healthJson = (await healthRes.json()) as {
-      ok: boolean;
-      cache: { backend?: string };
-    };
+    const healthJson = (await healthRes.json()) as { ok: boolean; cache: { backend?: string } };
     expect(healthJson.ok).toBe(true);
     expect(healthJson.cache.backend).toBe('cloudflare-workers');
-
-    const metaRes = await workerApp.fetch(new Request('http://localhost/api/meta'));
-    expect(metaRes.status).toBe(200);
-    const metaJson = (await metaRes.json()) as { states: unknown[] };
-    expect(metaJson.states).toHaveLength(50);
 
     const statesRes = await workerApp.fetch(new Request('http://localhost/api/states'));
     expect(statesRes.status).toBe(200);
