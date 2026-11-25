@@ -7,14 +7,14 @@ import {
   Gauge,
   GitCompare,
   MapPinned,
+  Plus,
   Printer,
   Sunrise,
   Sunset,
-  Users,
   Wind,
   X,
 } from 'lucide-react';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import type {
   MetricLayer,
   StateCitiesWeatherResponse,
@@ -70,6 +70,88 @@ function formatPopulation(pop: number): string {
   return `${(pop / 1_000).toFixed(1)}k`;
 }
 
+type SectionAccent = 'emerald' | 'sky';
+
+const SECTION_ACCENT_STYLES: Record<
+  SectionAccent,
+  { container: string; hover: string; title: string }
+> = {
+  emerald: {
+    container:
+      'border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-500/25 dark:bg-emerald-950/20',
+    hover: 'hover:bg-emerald-100/40 dark:hover:bg-emerald-950/40',
+    title: 'text-emerald-800 dark:text-emerald-300',
+  },
+  sky: {
+    container: 'border-sky-200/80 bg-sky-50/50 dark:border-sky-500/25 dark:bg-sky-950/30',
+    hover: 'hover:bg-sky-100/40 dark:hover:bg-sky-950/50',
+    title: 'text-sky-700 dark:text-sky-300',
+  },
+};
+
+interface CollapsibleSectionProps {
+  accent: SectionAccent;
+  highlighted: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  buttonTitle: string;
+  icon: ReactNode;
+  label: string;
+  hint: string;
+  children: ReactNode;
+}
+
+/** Accordion card shell shared by collapsible sections in StateDrawer. */
+function CollapsibleSection({
+  accent,
+  highlighted,
+  expanded,
+  onToggle,
+  buttonTitle,
+  icon,
+  label,
+  hint,
+  children,
+}: CollapsibleSectionProps) {
+  const styles = SECTION_ACCENT_STYLES[accent];
+  return (
+    <div
+      className={`rounded-xl border transition-colors ${
+        highlighted
+          ? styles.container
+          : 'border-slate-200/80 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-800/40'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        title={buttonTitle}
+        className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition ${
+          expanded ? 'rounded-t-xl' : 'rounded-xl'
+        } ${highlighted ? styles.hover : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/60'}`}
+      >
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span
+            className={`text-[11px] font-semibold tracking-wider uppercase ${
+              highlighted ? styles.title : 'text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {label}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-slate-400">
+          <span className="text-[10px]">{hint}</span>
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </div>
+      </button>
+
+      {expanded && children}
+    </div>
+  );
+}
+
 export function StateDrawer({
   meta,
   snapshot,
@@ -96,11 +178,22 @@ export function StateDrawer({
   fallbackTopCities = [],
 }: StateDrawerProps) {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
+  const [localTop10Open, setLocalTop10Open] = useState(detailedStateMode);
+  const [isCompareOpen, setIsCompareOpen] = useState(compareCodes.length > 0);
 
   const current = detail?.current ?? snapshot.current;
   const wmo = getWmoInfo(current.weatherCode);
   const aqiInfo = aqiCategory(current.usAqi);
   const isComparing = compareCodes.includes(meta.code);
+  const isTop10Open = onToggleDetailedStateMode ? detailedStateMode : localTop10Open;
+
+  const handleToggleTop10 = () => {
+    if (onToggleDetailedStateMode) {
+      onToggleDetailedStateMode();
+    } else {
+      setLocalTop10Open((v) => !v);
+    }
+  };
 
   const daily = detail?.daily ?? [];
   const weekMin = daily.length > 0 ? Math.min(...daily.map((d) => d.tempMinF)) : current.tempLowF;
@@ -165,13 +258,13 @@ export function StateDrawer({
           </button>
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <div className="relative inline-flex items-center">
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="relative inline-flex shrink-0 items-center">
             <select
               aria-label="Select city"
               value={activeCityValue}
               onChange={(e) => onSelectCity(e.target.value)}
-              className="appearance-none rounded-lg border border-slate-200 bg-slate-50 py-1 pr-6 pl-2 text-xs font-medium text-slate-800 transition hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600"
+              className="max-w-[160px] appearance-none truncate rounded-lg border border-slate-200 bg-slate-50 py-1 pr-6 pl-2 text-xs font-medium text-slate-800 transition hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600"
             >
               {cityOptions.map((cityName) => (
                 <option
@@ -190,46 +283,14 @@ export function StateDrawer({
           </div>
 
           {detail && (
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+            <span
+              title={`Elev ${detail.elevationM}m • ${detail.timezone}`}
+              className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400"
+            >
               Elev {detail.elevationM}m • {detail.timezone}
             </span>
           )}
-        </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {onToggleDetailedStateMode && (
-            <button
-              type="button"
-              onClick={onToggleDetailedStateMode}
-              aria-pressed={detailedStateMode}
-              title={
-                detailedStateMode
-                  ? 'Exit Detailed State Mode (D)'
-                  : 'Zoom in & load top 10 populated cities (D)'
-              }
-              className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-                detailedStateMode
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              <MapPinned size={12} />
-              <span>Top 10</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => onToggleCompare(meta.code)}
-            title={isComparing ? 'Remove from comparison' : 'Compare state'}
-            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-              isComparing
-                ? 'bg-sky-600 text-white'
-                : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
-          >
-            <GitCompare size={12} />
-            <span>{isComparing ? 'Pinned' : 'Compare'}</span>
-          </button>
           <button
             type="button"
             onClick={onPrintState}
@@ -273,20 +334,77 @@ export function StateDrawer({
           </div>
         </div>
 
-        {detailedStateMode && (
-          <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3 dark:border-emerald-500/25 dark:bg-emerald-950/20">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Users size={13} className="text-emerald-600 dark:text-emerald-400" />
-                <span className="text-[11px] font-semibold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
-                  Top 10 Populated Cities
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400">
-                {citiesLoading ? 'Fetching...' : 'Click city for chart'}
-              </span>
-            </div>
+        {mode === 'live' && detail?.alerts && detail.alerts.length > 0 && (
+          <div className="space-y-1.5">
+            {detail.alerts.slice(0, 4).map((al) => {
+              const expanded = expandedAlertId === al.id;
+              return (
+                <div
+                  key={al.id}
+                  className="rounded-xl border border-rose-200 bg-rose-50/80 p-2.5 dark:border-rose-500/30 dark:bg-rose-950/40"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedAlertId(expanded ? null : al.id)}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle size={13} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                      <span className="text-xs font-semibold text-rose-800 dark:text-rose-200">
+                        {al.event}
+                      </span>
+                    </div>
+                    {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <p className="mt-1 text-[11px] text-rose-700/90 dark:text-rose-300/90">
+                    {al.areaDesc}
+                  </p>
+                  {expanded && (
+                    <div className="mt-2 space-y-1 border-t border-rose-200/70 pt-2 text-[11px] text-rose-900/90 dark:border-rose-800/50 dark:text-rose-100/90">
+                      <p className="whitespace-pre-line">{al.description.slice(0, 600)}</p>
+                      {al.instruction && (
+                        <p className="font-medium text-rose-950 dark:text-rose-200">
+                          Action: {al.instruction}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
+        <CollapsibleSection
+          accent="emerald"
+          highlighted={isTop10Open}
+          expanded={isTop10Open}
+          onToggle={handleToggleTop10}
+          buttonTitle={
+            isTop10Open
+              ? 'Collapse top 10 populated cities & exit zoom (D)'
+              : 'Zoom in & load top 10 populated cities (D)'
+          }
+          icon={
+            <MapPinned
+              size={13}
+              className={
+                isTop10Open
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-slate-500 dark:text-slate-400'
+              }
+            />
+          }
+          label="Top 10 Populated Cities"
+          hint={
+            isTop10Open
+              ? citiesLoading
+                ? 'Fetching...'
+                : 'Click city for chart'
+              : 'Zoom & cities (D)'
+          }
+        >
+          <div className="px-3 pb-3">
             {citiesError ? (
               <div className="rounded-lg bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
                 {citiesError}
@@ -373,48 +491,100 @@ export function StateDrawer({
               </div>
             )}
           </div>
-        )}
+        </CollapsibleSection>
 
-        {mode === 'live' && detail?.alerts && detail.alerts.length > 0 && (
-          <div className="space-y-1.5">
-            {detail.alerts.slice(0, 4).map((al) => {
-              const expanded = expandedAlertId === al.id;
+        <CollapsibleSection
+          accent="sky"
+          highlighted={isCompareOpen || compareCodes.length > 0}
+          expanded={isCompareOpen}
+          onToggle={() => setIsCompareOpen((v) => !v)}
+          buttonTitle={isCompareOpen ? 'Collapse state comparison' : 'Compare up to 3 states'}
+          icon={
+            <GitCompare
+              size={13}
+              className={
+                isCompareOpen || compareCodes.length > 0
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-slate-500 dark:text-slate-400'
+              }
+            />
+          }
+          label={`Compare States (${compareCodes.length}/3)`}
+          hint={
+            isCompareOpen
+              ? compareCodes.length > 0
+                ? 'Click state to jump'
+                : 'Pin up to 3 states'
+              : compareCodes.length > 0
+                ? `${compareCodes.length} pinned`
+                : 'Up to 3 states'
+          }
+        >
+          <div className="space-y-1.5 px-3 pb-3">
+            {compareCodes.map((c) => {
+              const s = allStates[c];
+              if (!s) return null;
+              const isCurrent = c === meta.code;
               return (
                 <div
-                  key={al.id}
-                  className="rounded-xl border border-rose-200 bg-rose-50/80 p-2.5 dark:border-rose-500/30 dark:bg-rose-950/40"
+                  key={c}
+                  className={`flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 text-xs dark:bg-slate-900/80 ${
+                    isCurrent ? 'ring-1 ring-sky-400/60 dark:ring-sky-500/40' : ''
+                  }`}
                 >
                   <button
                     type="button"
-                    onClick={() => setExpandedAlertId(expanded ? null : al.id)}
-                    className="flex w-full items-center justify-between text-left"
+                    onClick={() => onSelectState(c)}
+                    className="flex items-center gap-1.5 font-medium hover:text-sky-600"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <AlertTriangle size={13} className="shrink-0 text-rose-600 dark:text-rose-400" />
-                      <span className="text-xs font-semibold text-rose-800 dark:text-rose-200">
-                        {al.event}
-                      </span>
-                    </div>
-                    {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    <span className="font-semibold">{s.code}</span>
+                    <span className="text-slate-500 dark:text-slate-400">{s.city}</span>
                   </button>
-                  <p className="mt-1 text-[11px] text-rose-700/90 dark:text-rose-300/90">
-                    {al.areaDesc}
-                  </p>
-                  {expanded && (
-                    <div className="mt-2 space-y-1 border-t border-rose-200/70 pt-2 text-[11px] text-rose-900/90 dark:border-rose-800/50 dark:text-rose-100/90">
-                      <p className="whitespace-pre-line">{al.description.slice(0, 600)}</p>
-                      {al.instruction && (
-                        <p className="font-medium text-rose-950 dark:text-rose-200">
-                          Action: {al.instruction}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2.5 tabular-nums">
+                    <span className="font-semibold">{formatTemp(s.current.temperatureF, unit)}</span>
+                    <span className="text-[11px] text-slate-400">
+                      {formatWind(s.current.windSpeedMph, unit)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleCompare(c)}
+                      className="text-slate-400 hover:text-rose-500"
+                      aria-label={`Remove ${c}`}
+                      title={isCurrent ? `Unpin ${c}` : `Remove ${c}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
+
+            {!isComparing && (
+              <button
+                type="button"
+                onClick={() => onToggleCompare(meta.code)}
+                title={
+                  compareCodes.length >= 3
+                    ? `Pin ${meta.name} (${meta.code}) — replaces oldest`
+                    : `Pin ${meta.name} (${meta.code}) to comparison`
+                }
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-sky-300 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-sky-700 transition hover:border-sky-400 hover:bg-white dark:border-sky-500/40 dark:bg-slate-900/60 dark:text-sky-300 dark:hover:border-sky-400/60 dark:hover:bg-slate-900"
+              >
+                <Plus size={13} />
+                <span>
+                  Pin {meta.name} ({meta.code})
+                  {compareCodes.length >= 3 ? ' (replaces oldest)' : ''}
+                </span>
+              </button>
+            )}
+
+            {isComparing && compareCodes.length < 3 && (
+              <p className="text-[10px] text-slate-400">
+                Select another state on the map to add it to comparison.
+              </p>
+            )}
           </div>
-        )}
+        </CollapsibleSection>
 
         {isLoading && !detail ? (
           <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
@@ -542,52 +712,6 @@ export function StateDrawer({
               <Sunset size={13} className="text-orange-500" />
               <span>Sunset</span>
               <span className="tabular-nums font-semibold">{formatSunTime(current.sunset)}</span>
-            </div>
-          </div>
-        )}
-
-        {compareCodes.length > 0 && (
-          <div className="rounded-xl border border-sky-200/80 bg-sky-50/50 p-3 dark:border-sky-500/25 dark:bg-sky-950/30">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-semibold tracking-wider text-sky-700 uppercase dark:text-sky-300">
-                State Comparison ({compareCodes.length}/3)
-              </span>
-              <span className="text-[10px] text-slate-400">Click state to jump</span>
-            </div>
-            <div className="space-y-1.5">
-              {compareCodes.map((c) => {
-                const s = allStates[c];
-                if (!s) return null;
-                return (
-                  <div
-                    key={c}
-                    className="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 text-xs dark:bg-slate-900/80"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onSelectState(c)}
-                      className="flex items-center gap-1.5 font-medium hover:text-sky-600"
-                    >
-                      <span className="font-semibold">{s.code}</span>
-                      <span className="text-slate-500 dark:text-slate-400">{s.city}</span>
-                    </button>
-                    <div className="flex items-center gap-2.5 tabular-nums">
-                      <span className="font-semibold">{formatTemp(s.current.temperatureF, unit)}</span>
-                      <span className="text-[11px] text-slate-400">
-                        {formatWind(s.current.windSpeedMph, unit)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onToggleCompare(c)}
-                        className="text-slate-400 hover:text-rose-500"
-                        aria-label={`Remove ${c}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}

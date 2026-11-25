@@ -257,6 +257,39 @@ describe('Colormaps & UI Render Smoke Tests', () => {
     );
     expect(drawerHtml).toContain('California');
     expect(drawerHtml).toContain('Top 10 Populated Cities');
+    expect(drawerHtml).toContain('Compare States (0/3)');
+    expect(drawerHtml).toContain('Print');
     expect(drawerHtml).toMatch(/value="San Jose"[^>]*selected=""/);
+    expect(drawerHtml).toMatch(/aria-label="Select city"[\s\S]*title="Print state weather report"[\s\S]*Top 10 Populated Cities/);
+
+    const collapsedTop10DrawerHtml = renderToStaticMarkup(
+      createElement(StateDrawer, {
+        meta: STATE_BY_CODE.CA!,
+        snapshot: dataset.states.CA!,
+        detail: null,
+        isLoading: false,
+        mode: 'historical',
+        unit: 'F',
+        metric: 'temperature',
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCity: 'Los Angeles',
+        onSelectCity: () => {},
+        compareCodes: ['TX'],
+        onToggleCompare: () => {},
+        allStates: dataset.states,
+        onSelectState: () => {},
+        onPrintState: () => {},
+        onClose: () => {},
+        detailedStateMode: false,
+        onToggleDetailedStateMode: () => {},
+        citiesWeather: caCitiesWeather,
+      }),
+    );
+    expect(collapsedTop10DrawerHtml).toContain('Top 10 Populated Cities');
+    expect(collapsedTop10DrawerHtml).not.toContain('Click city for chart');
+    expect(collapsedTop10DrawerHtml).toContain('Compare States (1/3)');
+    expect(collapsedTop10DrawerHtml).toContain('Pin California (CA)');
+    expect(collapsedTop10DrawerHtml).toContain('TX');
   });
 });
