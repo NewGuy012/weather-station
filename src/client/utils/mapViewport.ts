@@ -1,6 +1,6 @@
 export const MIN_ZOOM = 0.5;
 export const DEFAULT_ZOOM = 1;
-export const MAX_ZOOM = 5;
+export const MAX_ZOOM = 12;
 export const ZOOM_BUTTON_STEP = 0.25;
 export const DRAG_THRESHOLD_PX = 4;
 export const KEYBOARD_PAN_STEP_PX = 40;
@@ -46,12 +46,67 @@ export function clampZoom(zoom: number): number {
 export function clampPan(pan: PanOffset, zoom: number, stageSize: StageSize): PanOffset {
   const safeWidth = stageSize.width > 0 ? stageSize.width : 1000;
   const safeHeight = stageSize.height > 0 ? stageSize.height : 625;
-  const maxX = Math.max(180, safeWidth * 0.48 * zoom);
-  const maxY = Math.max(120, safeHeight * 0.48 * zoom);
+  const maxX = Math.max(180, safeWidth * 0.55 * zoom);
+  const maxY = Math.max(120, safeHeight * 0.55 * zoom);
   return {
     x: Math.min(maxX, Math.max(-maxX, Math.round(pan.x * 10) / 10)),
     y: Math.min(maxY, Math.max(-maxY, Math.round(pan.y * 10) / 10)),
   };
+}
+
+/**
+ * Compute zoom and pan offset to frame a state's SVG bounding box inside the
+ * visible portion of the map viewport (accounting for an optional right drawer inset).
+ */
+export function computeStateFocusView(params: {
+  bounds: [[number, number], [number, number]];
+  mapWidth: number;
+  mapHeight: number;
+  stageSize: StageSize;
+  viewportSize: StageSize;
+  rightInsetPx?: number;
+}): MapViewState {
+  const {
+    bounds,
+    mapWidth,
+    mapHeight,
+    stageSize,
+    viewportSize,
+    rightInsetPx = 0,
+  } = params;
+  const safeStageW = stageSize.width > 0 ? stageSize.width : 1000;
+  const safeStageH = stageSize.height > 0 ? stageSize.height : 625;
+  const safeVpW = viewportSize.width > 0 ? viewportSize.width : safeStageW;
+  const safeVpH = viewportSize.height > 0 ? viewportSize.height : safeStageH;
+
+  const [[x0, y0], [x1, y1]] = bounds;
+  const boxW = Math.max(8, ((x1 - x0) / mapWidth) * safeStageW);
+  const boxH = Math.max(8, ((y1 - y0) / mapHeight) * safeStageH);
+
+  const availW = Math.max(220, safeVpW - rightInsetPx);
+  const availH = Math.max(180, safeVpH);
+  const fillRatio = 0.68;
+
+  const zoomX = (availW * fillRatio) / boxW;
+  const zoomY = (availH * fillRatio) / boxH;
+  const zoom = clampZoom(Math.max(1.6, Math.min(MAX_ZOOM, zoomX, zoomY)));
+
+  const centerSvgX = (x0 + x1) / 2;
+  const centerSvgY = (y0 + y1) / 2;
+  const localCx = (centerSvgX / mapWidth - 0.5) * safeStageW;
+  const localCy = (centerSvgY / mapHeight - 0.5) * safeStageH;
+
+  const targetCenterRelX = -rightInsetPx / 2;
+  const pan = clampPan(
+    {
+      x: targetCenterRelX - zoom * localCx,
+      y: -zoom * localCy,
+    },
+    zoom,
+    { width: safeStageW, height: safeStageH },
+  );
+
+  return { zoom, pan };
 }
 
 /** Shift map view by a pixel delta and clamp within current zoom bounds. */

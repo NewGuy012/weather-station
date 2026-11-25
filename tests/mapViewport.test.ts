@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MapCanvas } from '../src/client/components/MapCanvas';
 import seedHistorical from '../src/server/data/seedHistorical.json';
 import type { WeatherDatasetResponse } from '../src/shared/types';
+import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries } from '../src/client/utils/mapGeometry';
 import {
   DEFAULT_ZOOM,
   INITIAL_MAP_VIEW,
@@ -13,6 +14,7 @@ import {
   MIN_ZOOM,
   clampPan,
   clampZoom,
+  computeStateFocusView,
   getArrowPanDelta,
   getWheelZoomFactor,
   getZoomShortcutAction,
@@ -32,14 +34,14 @@ describe('Map Viewport Pan & Zoom Helpers', () => {
     expect(clampZoom(0.75)).toBe(0.75);
     expect(clampZoom(1)).toBe(DEFAULT_ZOOM);
     expect(clampZoom(2.345)).toBe(2.35);
-    expect(clampZoom(8)).toBe(MAX_ZOOM);
+    expect(clampZoom(20)).toBe(MAX_ZOOM);
     expect(clampZoom(Number.NaN)).toBe(DEFAULT_ZOOM);
   });
 
   test('clamps pan offset within stage bounds proportional to zoom', () => {
     expect(clampPan({ x: 120, y: -80 }, 1, STAGE)).toEqual({ x: 120, y: -80 });
-    expect(clampPan({ x: 5000, y: -5000 }, 1, STAGE)).toEqual({ x: 480, y: -300 });
-    expect(clampPan({ x: -1200, y: 800 }, 2, STAGE)).toEqual({ x: -960, y: 600 });
+    expect(clampPan({ x: 5000, y: -5000 }, 1, STAGE)).toEqual({ x: 550, y: -343.75 });
+    expect(clampPan({ x: -1200, y: 800 }, 2, STAGE)).toEqual({ x: -1100, y: 687.5 });
   });
 
   test('pans by relative offsets and tracks view modification state', () => {
@@ -85,6 +87,50 @@ describe('Map Viewport Pan & Zoom Helpers', () => {
       focalOffset: { x: 150, y: -100 },
     });
     expect(zoomed).toEqual({ zoom: 2, pan: { x: -150, y: 100 } });
+  });
+
+  test('computes focus view for large and small states with drawer inset', () => {
+    const geometries = getUsStateGeometries();
+    expect(geometries).toHaveLength(50);
+
+    const tx = geometries.find((g) => g.meta.code === 'TX')!;
+    const ri = geometries.find((g) => g.meta.code === 'RI')!;
+    const ak = geometries.find((g) => g.meta.code === 'AK')!;
+
+    const txFocus = computeStateFocusView({
+      bounds: tx.bounds,
+      mapWidth: MAP_WIDTH,
+      mapHeight: MAP_HEIGHT,
+      stageSize: STAGE,
+      viewportSize: { width: 1280, height: 700 },
+      rightInsetPx: 436,
+    });
+    expect(txFocus.zoom).toBeGreaterThanOrEqual(1.6);
+    expect(txFocus.zoom).toBeLessThan(5);
+
+    const riFocus = computeStateFocusView({
+      bounds: ri.bounds,
+      mapWidth: MAP_WIDTH,
+      mapHeight: MAP_HEIGHT,
+      stageSize: STAGE,
+      viewportSize: { width: 1280, height: 700 },
+      rightInsetPx: 436,
+    });
+    expect(riFocus.zoom).toBeGreaterThan(6);
+    expect(riFocus.zoom).toBeLessThanOrEqual(MAX_ZOOM);
+
+    const akFocus = computeStateFocusView({
+      bounds: ak.bounds,
+      mapWidth: MAP_WIDTH,
+      mapHeight: MAP_HEIGHT,
+      stageSize: STAGE,
+      viewportSize: { width: 1280, height: 700 },
+      rightInsetPx: 436,
+    });
+    expect(akFocus.zoom).toBeGreaterThanOrEqual(1.6);
+    // AK is on the bottom-left of the map, so pan shifts right (+x) and up (-y)
+    expect(akFocus.pan.x).toBeGreaterThan(0);
+    expect(akFocus.pan.y).toBeLessThan(0);
   });
 });
 

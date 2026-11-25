@@ -13,6 +13,7 @@ export const usProjection = geoAlbersUsa().scale(1280).translate([488, 305]);
 export interface StateGeometryItem {
   meta: StateMeta;
   pathD: string;
+  bounds: [[number, number], [number, number]];
   centroid: [number, number];
   cityPoint: [number, number];
   labelPoint: [number, number];
@@ -43,6 +44,7 @@ function buildGeometries(): void {
     const pathD = pathGen(geoFeature) ?? '';
     if (!pathD) continue;
 
+    const rawBounds = pathGen.bounds(geoFeature);
     const rawCentroid = pathGen.centroid(geoFeature);
     const cityProj = usProjection([meta.lon, meta.lat]);
     const centroid: [number, number] =
@@ -74,9 +76,24 @@ function buildGeometries(): void {
       baseY -= 6;
     }
 
+    const bounds: [[number, number], [number, number]] =
+      Number.isFinite(rawBounds[0][0]) &&
+      Number.isFinite(rawBounds[0][1]) &&
+      Number.isFinite(rawBounds[1][0]) &&
+      Number.isFinite(rawBounds[1][1])
+        ? [
+            [rawBounds[0][0], rawBounds[0][1]],
+            [rawBounds[1][0], rawBounds[1][1]],
+          ]
+        : [
+            [baseX - 24, baseY - 24],
+            [baseX + 24, baseY + 24],
+          ];
+
     items.push({
       meta,
       pathD,
+      bounds,
       centroid: [baseX, baseY],
       cityPoint,
       labelPoint: [baseX + dx, baseY + dy],
