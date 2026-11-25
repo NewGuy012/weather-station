@@ -22,7 +22,7 @@ Install dependencies with [Bun](https://bun.sh/) and start the app locally:
 
 ```bash
 bun install
-bun run dev        # Vite + Cloudflare Workers dev server
+bun run dev        # Bun full-stack dev server with HMR (http://localhost:3000)
 ```
 
 <details>
@@ -43,7 +43,7 @@ bun run seed                     # Regenerate the default historical snapshot
 | Area | Built With |
 | :--- | :--- |
 | Frontend | React 19, TypeScript, Tailwind CSS v4, `d3-geo` + `us-atlas` |
-| Backend & Edge | Cloudflare Workers, Vite 7, Edge Cache API |
+| Backend & Edge | Cloudflare Workers, Bun (dev & client bundler), Edge Cache API |
 | Weather & Radar | Open-Meteo (Forecast, ERA5, Air Quality), NOAA/NWS Alerts, NOAA MRMS & IEM NEXRAD |
 
 ## Project Structure
