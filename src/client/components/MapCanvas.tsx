@@ -36,15 +36,14 @@ import {
   interpolateColor,
   isColorLight,
   resolveMetricStops,
-  resolveMetricValue,
   resolveStateSlice,
 } from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
 import { WeatherGlyph } from './WeatherIcon';
 import {
+  type StatePhenomenon,
   type WeatherPhenomenon,
-  buildShowcasePhenomena,
-  classifySnapshotPhenomenon,
+  classifyStatesPhenomena,
   hasActiveMapFx,
 } from '../../shared/weatherPhenomena';
 
@@ -73,11 +72,10 @@ interface MapCanvasProps {
   onSelectCity?: (cityName: string) => void;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
-  /** Whether animated Weather FX are active (adds subtle alert pulse & enables 'A' shortcut) */
   showWeatherFx?: boolean;
   onToggleWeatherFx?: () => void;
   fxShowcase?: boolean;
-  /** Called when map zoom factor changes */
+  statePhenomena?: Record<string, StatePhenomenon>;
   onZoomChange?: (zoom: number) => void;
   /** Incrementing counter to reset pan and zoom back to the default view */
   resetTrigger?: number;
@@ -112,6 +110,7 @@ export function MapCanvas({
   showWeatherFx = false,
   onToggleWeatherFx,
   fxShowcase = false,
+  statePhenomena,
   onZoomChange,
   resetTrigger,
   onViewModifiedChange,
@@ -125,8 +124,16 @@ export function MapCanvas({
     [metric, colormap, reverseColormap],
   );
   const stateVisuals = useMemo(() => {
-    const fallbackFill = isDark ? 'rgb(30, 41, 59)' : 'rgb(226, 232, 240)';
-    const showcaseMap = showWeatherFx && fxShowcase ? buildShowcasePhenomena(states) : null;
+    const resolvedPhenomena =
+      statePhenomena ??
+      classifyStatesPhenomena(
+        states,
+        timelineIndex,
+        useTimeline,
+        alertsByState,
+        metric,
+        showWeatherFx && fxShowcase,
+      );
     const byCode: Record<
       string,
       {
@@ -141,23 +148,21 @@ export function MapCanvas({
       const snap = states[item.meta.code];
       if (!snap) continue;
       const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-      const rawMetric = resolveMetricValue(scaleConfig, snap.current, slice);
+      const rawMetric = scaleConfig.extract(slice, snap.current);
       const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
-      const phenom = showcaseMap
-        ? showcaseMap[item.meta.code]!
-        : classifySnapshotPhenomenon(slice, snap.current, alertsByState[item.meta.code], metric);
       byCode[item.meta.code] = {
         slice,
         displayVal: scaleConfig.formatMapValue(rawMetric, unit),
-        fill: fill || fallbackFill,
+        fill,
         lightFill: isColorLight(fill),
-        phenomenon: phenom.phenomenon,
+        phenomenon: resolvedPhenomena[item.meta.code]?.phenomenon ?? 'clear',
       };
     }
     return byCode;
   }, [
     geometries,
     states,
+    statePhenomena,
     timelineIndex,
     useTimeline,
     scaleConfig,
@@ -525,39 +530,33 @@ export function MapCanvas({
           const proj = usProjection([c.lon, c.lat]);
           if (!proj) return null;
           const slice = resolveStateSlice(c, timelineIndex, useTimeline);
-          const rawMetric = resolveMetricValue(scaleConfig, c.current, slice);
+          const rawMetric = scaleConfig.extract(slice, c.current);
           const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
           const fill = interpolateColor(rawMetric, activeStops, isDark, calmZero);
           const label = `${c.name} ${displayVal}`;
-          const boxWidth = Math.max(76, Math.min(138, label.length * 5.6 + 22));
           return {
             rank: c.rank,
             name: c.name,
-            population: c.population,
             px: proj[0],
             py: proj[1],
             displayVal,
             fill,
-            boxWidth,
+            boxWidth: Math.max(76, Math.min(138, label.length * 5.6 + 22)),
             boxHeight: 20,
-            loaded: true,
           };
         })
       : (TOP_CITIES_BY_STATE[selectedCode] ?? []).map((c) => {
           const proj = usProjection([c.lon, c.lat]);
           if (!proj) return null;
-          const boxWidth = Math.max(66, Math.min(120, c.name.length * 5.6 + 18));
           return {
             rank: c.rank,
             name: c.name,
-            population: c.population,
             px: proj[0],
             py: proj[1],
             displayVal: '…',
             fill: isDark ? '#38bdf8' : '#0284c7',
-            boxWidth,
+            boxWidth: Math.max(66, Math.min(120, c.name.length * 5.6 + 18)),
             boxHeight: 18,
-            loaded: false,
           };
         });
 
@@ -941,6 +940,7 @@ export function MapCanvas({
             mapWidth={MAP_WIDTH}
             mapHeight={MAP_HEIGHT}
             alerts={alertsByState[selectedGeo.meta.code]}
+            phenomenon={selectedVisual.phenomenon}
             onClose={() => onSelectState(null)}
           />
         )}
@@ -964,7 +964,7 @@ export function MapCanvas({
           x={hovered.x}
           y={hovered.y}
           alerts={alertsByState[hovered.code]}
-          panActive={spaceHeld}
+          phenomenon={hoveredVisual.phenomenon}
         />
       )}
     </div>

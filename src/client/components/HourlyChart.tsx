@@ -40,7 +40,7 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
     const tVal = temps[i] ?? 0;
     const y = padTop + plotH - ((tVal - minT) / rangeT) * plotH;
     const precipH = (p.precipitationMm / maxPrecip) * (plotH * 0.45);
-    return { x, y, precipH, point: p, displayTemp: tVal };
+    return { x, y, precipH, point: p };
   });
 
   const linePath = coords

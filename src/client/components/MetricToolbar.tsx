@@ -9,7 +9,7 @@ import {
   RotateCcw,
   Wind,
 } from './Icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ColormapId, MetricLayer, TempUnit, WeatherMode } from '../../shared/types';
 import {
   COLORMAPS,
@@ -19,6 +19,7 @@ import {
   resolveMetricStops,
   stopsToCssGradient,
 } from '../utils/scales';
+import { useDismiss } from '../utils/useDismiss';
 
 interface MetricToolbarProps {
   metric: MetricLayer;
@@ -68,23 +69,7 @@ export function MetricToolbar({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!paletteOpen) return;
-    const handlePointerDown = (e: PointerEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setPaletteOpen(false);
-      }
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPaletteOpen(false);
-    };
-    window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [paletteOpen]);
+  useDismiss(paletteOpen, () => setPaletteOpen(false), toolbarRef);
 
   const scale = METRIC_SCALES[metric];
   const activeStops = useMemo(

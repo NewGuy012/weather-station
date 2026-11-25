@@ -4,7 +4,6 @@ import type {
   StateCurrentMetrics,
   StateWeatherSnapshot,
   TempUnit,
-  TimelinePoint,
 } from '../../shared/types';
 import { convertWind, formatPrecipValue, formatTemp } from '../../shared/units';
 
@@ -21,6 +20,16 @@ export interface ColormapOption {
   palette?: [number, number, number][];
 }
 
+export interface ResolvedStateSlice {
+  temperatureF: number;
+  apparentTemperatureF: number;
+  precipitationMm: number;
+  windSpeedMph: number;
+  windDirectionDeg: number;
+  humidity: number;
+  weatherCode: number;
+}
+
 export interface MetricScaleConfig {
   id: MetricLayer;
   label: string;
@@ -28,8 +37,7 @@ export interface MetricScaleConfig {
   unitLabel: (unit: TempUnit) => string;
   stops: ColorStop[];
   formatMapValue: (val: number | null, unit: TempUnit) => string;
-  extractCurrent: (m: StateCurrentMetrics) => number | null;
-  extractTimeline: (t: TimelinePoint, fallback: StateCurrentMetrics) => number | null;
+  extract: (slice: ResolvedStateSlice, current: StateCurrentMetrics) => number | null;
 }
 
 const TEMP_STOPS: ColorStop[] = [
@@ -90,8 +98,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: (u) => `°${u}`,
     stops: TEMP_STOPS,
     formatMapValue: (v, u) => (v === null ? '—' : formatTemp(v, u)),
-    extractCurrent: (m) => m.temperatureF,
-    extractTimeline: (t) => t.temperatureF,
+    extract: (s) => s.temperatureF,
   },
   apparentTemperature: {
     id: 'apparentTemperature',
@@ -100,8 +107,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: (u) => `°${u}`,
     stops: TEMP_STOPS,
     formatMapValue: (v, u) => (v === null ? '—' : formatTemp(v, u)),
-    extractCurrent: (m) => m.apparentTemperatureF,
-    extractTimeline: (t) => t.apparentTemperatureF,
+    extract: (s) => s.apparentTemperatureF,
   },
   precipitation: {
     id: 'precipitation',
@@ -114,8 +120,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
       if (v < 0.05) return '0';
       return formatPrecipValue(v, u);
     },
-    extractCurrent: (m) => m.precipitationMm,
-    extractTimeline: (t) => t.precipitationMm,
+    extract: (s) => s.precipitationMm,
   },
   windSpeed: {
     id: 'windSpeed',
@@ -124,8 +129,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: (u) => (u === 'C' ? 'km/h' : 'mph'),
     stops: WIND_STOPS,
     formatMapValue: (v, u) => (v === null ? '—' : `${convertWind(v, u)}`),
-    extractCurrent: (m) => m.windSpeedMph,
-    extractTimeline: (t) => t.windSpeedMph,
+    extract: (s) => s.windSpeedMph,
   },
   humidity: {
     id: 'humidity',
@@ -134,8 +138,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: () => '%',
     stops: HUMIDITY_STOPS,
     formatMapValue: (v) => (v === null ? '—' : `${Math.round(v)}%`),
-    extractCurrent: (m) => m.humidity,
-    extractTimeline: (t) => t.humidity,
+    extract: (s) => s.humidity,
   },
   aqi: {
     id: 'aqi',
@@ -144,8 +147,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: () => 'US AQI',
     stops: AQI_STOPS,
     formatMapValue: (v) => (v === null ? '—' : `${Math.round(v)}`),
-    extractCurrent: (m) => m.usAqi,
-    extractTimeline: (_t, fallback) => fallback.usAqi,
+    extract: (_s, c) => c.usAqi,
   },
   uvIndex: {
     id: 'uvIndex',
@@ -154,20 +156,11 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     unitLabel: () => 'UV',
     stops: UV_STOPS,
     formatMapValue: (v) => (v === null ? '—' : v.toFixed(1).replace(/\.0$/, '')),
-    extractCurrent: (m) => m.uvIndex,
-    extractTimeline: (_t, fallback) => fallback.uvIndex,
+    extract: (_s, c) => c.uvIndex,
   },
 };
 
-export const METRIC_LIST: MetricScaleConfig[] = [
-  METRIC_SCALES.temperature,
-  METRIC_SCALES.apparentTemperature,
-  METRIC_SCALES.precipitation,
-  METRIC_SCALES.windSpeed,
-  METRIC_SCALES.humidity,
-  METRIC_SCALES.aqi,
-  METRIC_SCALES.uvIndex,
-];
+export const METRIC_LIST: MetricScaleConfig[] = Object.values(METRIC_SCALES);
 
 export const COLORMAPS: ColormapOption[] = [
   {
@@ -274,17 +267,6 @@ export function getNextColormapId(current: ColormapId): ColormapId {
   return COLORMAPS[(idx + 1) % COLORMAPS.length]?.id ?? 'default';
 }
 
-export interface ResolvedStateSlice {
-  temperatureF: number;
-  apparentTemperatureF: number;
-  precipitationMm: number;
-  windSpeedMph: number;
-  windDirectionDeg: number;
-  humidity: number;
-  weatherCode: number;
-  metricSource: TimelinePoint | undefined;
-}
-
 export function resolveStateSlice(
   snap: Pick<StateWeatherSnapshot, 'current' | 'timeline'>,
   timelineIndex: number,
@@ -299,18 +281,7 @@ export function resolveStateSlice(
     windDirectionDeg: t?.windDirectionDeg ?? snap.current.windDirectionDeg,
     humidity: t?.humidity ?? snap.current.humidity,
     weatherCode: t?.weatherCode ?? snap.current.weatherCode,
-    metricSource: t,
   };
-}
-
-export function resolveMetricValue(
-  scale: MetricScaleConfig,
-  current: StateCurrentMetrics,
-  slice: ResolvedStateSlice,
-): number | null {
-  return slice.metricSource
-    ? scale.extractTimeline(slice.metricSource, current)
-    : scale.extractCurrent(current);
 }
 
 function samplePalette<T>(items: T[], normalizedPos: number): { a: T; b: T; frac: number } {

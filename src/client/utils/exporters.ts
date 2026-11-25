@@ -15,7 +15,7 @@ import {
 import { getWmoInfo } from '../../shared/wmoCodes';
 import { resolveStateSlice } from './scales';
 
-const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const FORMULA_PREFIX = /^\s*[=+\-@|]|^[\t\r]/;
 const NUMERIC_LITERAL = /^-?\d+(?:\.\d+)?$/;
 
 function escapeCsv(val: string | number | null | undefined): string {
@@ -174,8 +174,8 @@ export async function exportMapAsPng(
   ctx.font = '400 22px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
   ctx.fillText(subtitle, 54, 90);
 
-  const svgs = Array.from(mapStageEl.querySelectorAll('svg'));
-  const canvases = Array.from(mapStageEl.querySelectorAll('canvas'));
+  const svgs = Array.from(mapStageEl.querySelectorAll<SVGSVGElement>(':scope > svg'));
+  const canvases = Array.from(mapStageEl.querySelectorAll<HTMLCanvasElement>(':scope > canvas'));
 
   const drawSvg = async (svg: SVGSVGElement) => {
     const clone = svg.cloneNode(true) as SVGSVGElement;

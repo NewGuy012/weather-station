@@ -72,6 +72,20 @@ function getRadarLut(): RadarLut {
   return cachedLut;
 }
 
+function createWorkCanvas(
+  w: number,
+  h: number,
+): { canvas: OffscreenCanvas | HTMLCanvasElement; ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null } {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(w, h);
+    return { canvas, ctx: canvas.getContext('2d') };
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return { canvas, ctx: canvas.getContext('2d') };
+}
+
 async function loadImagePixels(
   url: string,
   w: number,
@@ -84,8 +98,7 @@ async function loadImagePixels(
     const blob = await res.blob();
     const bitmap = await createImageBitmap(blob);
     try {
-      const off = new OffscreenCanvas(w, h);
-      const ctx = off.getContext('2d');
+      const { ctx } = createWorkCanvas(w, h);
       if (!ctx) return null;
       ctx.drawImage(bitmap, 0, 0, w, h);
       return new Uint32Array(ctx.getImageData(0, 0, w, h).data.buffer);
@@ -102,6 +115,7 @@ interface DopplerRadarOverlayProps {
   mode: WeatherMode;
   frames: RadarFrame[];
   activeFrameIndex: number;
+  isPlaying?: boolean;
   opacity: number;
   onLoadingChange?: (loading: boolean) => void;
 }
@@ -111,12 +125,13 @@ export function DopplerRadarOverlay({
   mode,
   frames,
   activeFrameIndex,
+  isPlaying = false,
   opacity,
   onLoadingChange,
 }: DopplerRadarOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
-  const inFlightRef = useRef<Set<string>>(new Set());
+  const inFlightRef = useRef<Map<string, Promise<ImageBitmap | null>>>(new Map());
 
   useEffect(() => {
     const cache = frameCacheRef.current;
@@ -156,50 +171,54 @@ export function DopplerRadarOverlay({
       );
     };
 
-    const buildCompositeForFrame = async (frame: RadarFrame): Promise<ImageBitmap | null> => {
+    const buildCompositeForFrame = (frame: RadarFrame): Promise<ImageBitmap | null> => {
       const cacheKey = `${mode}:${frame.timestamp}`;
       const existing = frameCacheRef.current.get(cacheKey);
-      if (existing) return existing;
-      if (inFlightRef.current.has(cacheKey)) return null;
-      inFlightRef.current.add(cacheKey);
+      if (existing) return Promise.resolve(existing);
+      const pending = inFlightRef.current.get(cacheKey);
+      if (pending) return pending;
 
-      try {
-        const [conusPx, akPx, hiPx] = await Promise.all([
-          loadRegion('conus', frame.timestamp),
-          frame.hasAlaska ? loadRegion('alaska', frame.timestamp) : Promise.resolve(null),
-          frame.hasHawaii ? loadRegion('hawaii', frame.timestamp) : Promise.resolve(null),
-        ]);
-        if (controller.signal.aborted || (!conusPx && !akPx && !hiPx)) return null;
+      const task = (async () => {
+        try {
+          const [conusPx, akPx, hiPx] = await Promise.all([
+            loadRegion('conus', frame.timestamp),
+            frame.hasAlaska ? loadRegion('alaska', frame.timestamp) : Promise.resolve(null),
+            frame.hasHawaii ? loadRegion('hawaii', frame.timestamp) : Promise.resolve(null),
+          ]);
+          if (controller.signal.aborted || (!conusPx && !akPx && !hiPx)) return null;
 
-        const outImg = new ImageData(WORK_W, WORK_H);
-        const dst32 = new Uint32Array(outImg.data.buffer);
-        const total = WORK_W * WORK_H;
+          const outImg = new ImageData(WORK_W, WORK_H);
+          const dst32 = new Uint32Array(outImg.data.buffer);
+          const total = WORK_W * WORK_H;
 
-        for (let i = 0; i < total; i++) {
-          const rCode = lut.regions[i];
-          if (rCode === 0) continue;
-          const sIdx = lut.srcIndex[i]!;
-          let px = 0;
-          if (rCode === 1 && conusPx) px = conusPx[sIdx] ?? 0;
-          else if (rCode === 2 && akPx) px = akPx[sIdx] ?? 0;
-          else if (rCode === 3 && hiPx) px = hiPx[sIdx] ?? 0;
-          if (px !== 0) dst32[i] = px;
+          for (let i = 0; i < total; i++) {
+            const rCode = lut.regions[i];
+            if (rCode === 0) continue;
+            const sIdx = lut.srcIndex[i]!;
+            let px = 0;
+            if (rCode === 1 && conusPx) px = conusPx[sIdx] ?? 0;
+            else if (rCode === 2 && akPx) px = akPx[sIdx] ?? 0;
+            else if (rCode === 3 && hiPx) px = hiPx[sIdx] ?? 0;
+            if (px !== 0) dst32[i] = px;
+          }
+
+          const { canvas: off, ctx: octx } = createWorkCanvas(WORK_W, WORK_H);
+          if (!octx) return null;
+          octx.putImageData(outImg, 0, 0);
+          const bitmap = await createImageBitmap(off);
+          if (controller.signal.aborted) {
+            bitmap.close();
+            return null;
+          }
+          cacheBitmap(cacheKey, bitmap);
+          return bitmap;
+        } finally {
+          inFlightRef.current.delete(cacheKey);
         }
+      })();
 
-        const off = new OffscreenCanvas(WORK_W, WORK_H);
-        const octx = off.getContext('2d');
-        if (!octx) return null;
-        octx.putImageData(outImg, 0, 0);
-        const bitmap = await createImageBitmap(off);
-        if (controller.signal.aborted) {
-          bitmap.close();
-          return null;
-        }
-        cacheBitmap(cacheKey, bitmap);
-        return bitmap;
-      } finally {
-        inFlightRef.current.delete(cacheKey);
-      }
+      inFlightRef.current.set(cacheKey, task);
+      return task;
     };
 
     const renderActive = async () => {
@@ -210,8 +229,11 @@ export function DopplerRadarOverlay({
       let bmp = frameCacheRef.current.get(cacheKey) ?? null;
       if (!bmp) {
         onLoadingChange?.(true);
-        bmp = await buildCompositeForFrame(frame);
-        onLoadingChange?.(false);
+        try {
+          bmp = await buildCompositeForFrame(frame);
+        } finally {
+          if (!controller.signal.aborted) onLoadingChange?.(false);
+        }
       }
       if (controller.signal.aborted || !bmp) return;
 
@@ -225,25 +247,23 @@ export function DopplerRadarOverlay({
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(bmp, 0, 0, MAP_WIDTH, MAP_HEIGHT);
       ctx.restore();
+
+      // Only look ahead 1 frame when playing; stay completely lazy while paused
+      if (isPlaying && frames.length > 1) {
+        const nextFrame = frames[(activeFrameIndex + 1) % frames.length];
+        if (nextFrame && !frameCacheRef.current.has(`${mode}:${nextFrame.timestamp}`)) {
+          void buildCompositeForFrame(nextFrame);
+        }
+      }
     };
 
     void renderActive();
 
-    // Preload neighboring frames for smooth looping
-    const preloadOrder = frames
-      .map((_, i) => i)
-      .sort((a, b) => Math.abs(a - activeFrameIndex) - Math.abs(b - activeFrameIndex));
-    for (const idx of preloadOrder.slice(0, 5)) {
-      const f = frames[idx];
-      if (f && !frameCacheRef.current.has(`${mode}:${f.timestamp}`)) {
-        void buildCompositeForFrame(f);
-      }
-    }
-
     return () => {
       controller.abort();
+      onLoadingChange?.(false);
     };
-  }, [visible, mode, frames, activeFrameIndex, onLoadingChange]);
+  }, [visible, mode, frames, activeFrameIndex, isPlaying, onLoadingChange]);
 
   if (!visible) return null;
 

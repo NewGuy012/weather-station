@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
+import { buildHistoricalRadarFrames } from '../shared/radar';
 import { STATE_BY_CODE, US_STATES } from '../shared/states';
 import type {
   AlertsResponse,
@@ -14,12 +15,9 @@ import type {
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
-import {
-  classifySnapshotPhenomenon,
-  hasActiveMapFx,
-} from '../shared/weatherPhenomena';
+import { classifyStatesPhenomena, hasActiveMapFx } from '../shared/weatherPhenomena';
 import { isEditableTarget } from './utils/mapViewport';
-import { COLORMAP_BY_ID, getNextColormapId, resolveStateSlice } from './utils/scales';
+import { COLORMAP_BY_ID, getNextColormapId } from './utils/scales';
 import { BroadcastDock } from './components/BroadcastDock';
 import { DopplerRadarOverlay } from './components/DopplerRadarOverlay';
 import { ExportModal } from './components/ExportModal';
@@ -67,6 +65,10 @@ function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
+const LIVE_CLIENT_TTL_MS = 5 * 60_000;
+const MAX_CLIENT_CACHE_ENTRIES = 30;
+const apiClientCache = new Map<string, { data: unknown; fetchedAt: number; ttlMs: number | null }>();
+
 async function fetchApiJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
   if (!res.ok) {
@@ -74,6 +76,28 @@ async function fetchApiJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     throw new Error(err.error ?? `Request failed (${res.status})`);
   }
   return (await res.json()) as T;
+}
+
+async function fetchCachedApiJson<T>(
+  url: string,
+  opts: { signal?: AbortSignal; ttlMs?: number | null; forceRefresh?: boolean } = {},
+): Promise<T> {
+  const { signal, ttlMs = null, forceRefresh = false } = opts;
+  const hit = !forceRefresh ? apiClientCache.get(url) : undefined;
+  if (hit && (hit.ttlMs === null || Date.now() - hit.fetchedAt < hit.ttlMs)) {
+    return hit.data as T;
+  }
+
+  const reqUrl = forceRefresh ? `${url}${url.includes('?') ? '&' : '?'}refresh=1` : url;
+  const data = await fetchApiJson<T>(reqUrl, signal);
+  if (apiClientCache.has(url)) apiClientCache.delete(url);
+  apiClientCache.set(url, { data, fetchedAt: Date.now(), ttlMs });
+  while (apiClientCache.size > MAX_CLIENT_CACHE_ENTRIES) {
+    const oldest = apiClientCache.keys().next().value;
+    if (oldest === undefined) break;
+    apiClientCache.delete(oldest);
+  }
+  return data;
 }
 
 export function App() {
@@ -105,8 +129,9 @@ export function App() {
   const [stateCitiesWeather, setStateCitiesWeather] = useState<StateCitiesWeatherResponse | null>(null);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [citiesError, setCitiesError] = useState<string | null>(null);
-  const [citiesRefreshCount, setCitiesRefreshCount] = useState(0);
-  const refreshCitiesPendingRef = useRef(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const detailRefreshRef = useRef({ tick: 0, key: '' });
+  const citiesRefreshRef = useRef({ tick: 0, key: '' });
   const [mapViewModified, setMapViewModified] = useState(false);
   const [mapResetTrigger, setMapResetTrigger] = useState(0);
 
@@ -187,11 +212,21 @@ export function App() {
           if (opts.start) params.set('startDate', opts.start);
           if (opts.end) params.set('endDate', opts.end);
         }
-        if (opts.refresh) params.set('refresh', '1');
+        const ttlMs = opts.targetMode === 'live' ? LIVE_CLIENT_TTL_MS : null;
+        const alertsPromise =
+          opts.targetMode === 'live'
+            ? fetchCachedApiJson<AlertsResponse>('/api/alerts', {
+                signal: controller.signal,
+                ttlMs: LIVE_CLIENT_TTL_MS,
+                forceRefresh: opts.refresh,
+              })
+                .then(setAlertsData)
+                .catch(() => {})
+            : null;
 
-        const json = await fetchApiJson<WeatherDatasetResponse>(
+        const json = await fetchCachedApiJson<WeatherDatasetResponse>(
           `/api/states?${params.toString()}`,
-          controller.signal,
+          { signal: controller.signal, ttlMs, forceRefresh: opts.refresh },
         );
         setDataset(json);
 
@@ -202,12 +237,7 @@ export function App() {
           setTimelineIndex(Math.max(0, fallbackIdx));
         } else {
           setTimelineIndex(0);
-          fetchApiJson<AlertsResponse>(
-            `/api/alerts${opts.refresh ? '?refresh=1' : ''}`,
-            controller.signal,
-          )
-            .then(setAlertsData)
-            .catch(() => {});
+          await alertsPromise;
         }
       } catch (err) {
         if (!isAbortError(err)) {
@@ -253,12 +283,20 @@ export function App() {
 
   useEffect(() => {
     if (!showRadar) return;
+    if (mode === 'historical') {
+      setRadarLoading(false);
+      const { frames } = buildHistoricalRadarFrames(radarAnchor, 12);
+      setRadarFrames(frames);
+      setRadarFrameIndex(Math.max(0, frames.length - 1));
+      return;
+    }
+
     const controller = new AbortController();
     setRadarLoading(true);
-    const params = new URLSearchParams({ mode });
-    if (mode === 'historical') params.set('anchor', radarAnchor);
-
-    fetchApiJson<RadarFramesResponse>(`/api/radar/frames?${params.toString()}`, controller.signal)
+    fetchCachedApiJson<RadarFramesResponse>('/api/radar/frames?mode=live', {
+      signal: controller.signal,
+      ttlMs: 3 * 60_000,
+    })
       .then((res) => {
         setRadarFrames(res.frames);
         setRadarFrameIndex(Math.max(0, res.frames.length - 1));
@@ -294,18 +332,27 @@ export function App() {
   useEffect(() => {
     if (!selectedCode) return;
     const controller = new AbortController();
-    setDetailLoading(true);
     const params = new URLSearchParams({ mode });
     if (selectedCity) params.set('city', selectedCity);
-    if (mode === 'historical') {
+    if (mode === 'live') {
+      params.set('alerts', '0');
+    } else {
       params.set('startDate', startDate);
       params.set('endDate', endDate);
     }
+    const url = `/api/state/${selectedCode}?${params.toString()}`;
+    const forceRefresh =
+      refreshTick !== detailRefreshRef.current.tick && detailRefreshRef.current.key === url;
+    detailRefreshRef.current = { tick: refreshTick, key: url };
 
-    fetchApiJson<StateDetailResponse>(
-      `/api/state/${selectedCode}?${params.toString()}`,
-      controller.signal,
-    )
+    setStateDetail((prev) => (prev?.code === selectedCode ? prev : null));
+    setDetailLoading(true);
+
+    fetchCachedApiJson<StateDetailResponse>(url, {
+      signal: controller.signal,
+      ttlMs: mode === 'live' ? LIVE_CLIENT_TTL_MS : null,
+      forceRefresh,
+    })
       .then(setStateDetail)
       .catch((err) => {
         if (!isAbortError(err)) setStateDetail(null);
@@ -315,7 +362,7 @@ export function App() {
       });
 
     return () => controller.abort();
-  }, [selectedCode, selectedCity, mode, startDate, endDate]);
+  }, [selectedCode, selectedCity, mode, startDate, endDate, refreshTick]);
 
   useEffect(() => {
     if (!detailedStateMode || !selectedCode) {
@@ -326,30 +373,28 @@ export function App() {
     }
 
     const controller = new AbortController();
-    setCitiesLoading(true);
-    setCitiesError(null);
-
     const params = new URLSearchParams({ mode });
     if (mode === 'historical') {
       if (activePresetId) params.set('preset', activePresetId);
       params.set('startDate', startDate);
       params.set('endDate', endDate);
     }
-    if (refreshCitiesPendingRef.current) {
-      params.set('refresh', '1');
-    }
+    const url = `/api/state/${selectedCode}/cities?${params.toString()}`;
+    const forceRefresh =
+      refreshTick !== citiesRefreshRef.current.tick && citiesRefreshRef.current.key === url;
+    citiesRefreshRef.current = { tick: refreshTick, key: url };
 
-    fetchApiJson<StateCitiesWeatherResponse>(
-      `/api/state/${selectedCode}/cities?${params.toString()}`,
-      controller.signal,
-    )
-      .then((res) => {
-        refreshCitiesPendingRef.current = false;
-        setStateCitiesWeather(res);
-      })
+    setCitiesLoading(true);
+    setCitiesError(null);
+
+    fetchCachedApiJson<StateCitiesWeatherResponse>(url, {
+      signal: controller.signal,
+      ttlMs: mode === 'live' ? LIVE_CLIENT_TTL_MS : null,
+      forceRefresh,
+    })
+      .then(setStateCitiesWeather)
       .catch((err) => {
         if (isAbortError(err)) return;
-        refreshCitiesPendingRef.current = false;
         setStateCitiesWeather(null);
         setCitiesError(
           err instanceof Error ? err.message : 'Unable to load top 10 cities weather',
@@ -360,7 +405,7 @@ export function App() {
       });
 
     return () => controller.abort();
-  }, [detailedStateMode, selectedCode, mode, startDate, endDate, activePresetId, citiesRefreshCount]);
+  }, [detailedStateMode, selectedCode, mode, startDate, endDate, activePresetId, refreshTick]);
 
   const handleToggleDetailedStateMode = useCallback(() => {
     setDetailedStateMode((prev) => !prev);
@@ -379,6 +424,7 @@ export function App() {
   }, []);
 
   const handleModeChange = (nextMode: WeatherMode) => {
+    if (nextMode === mode) return;
     setMode(nextMode);
     if (nextMode === 'live') {
       void loadDataset({ targetMode: 'live' });
@@ -421,18 +467,33 @@ export function App() {
   };
 
   const useTimeline = mode === 'historical' || isTimelinePlaying || timelineIndex > 0;
+  const activeAlertsByState = mode === 'live' ? alertsData?.byState : undefined;
+  const activeDetail = stateDetail?.code === selectedCode ? stateDetail : null;
+  const selectedAlerts = selectedCode ? activeAlertsByState?.[selectedCode] ?? [] : [];
+
+  const statePhenomena = useMemo(
+    () =>
+      dataset
+        ? classifyStatesPhenomena(
+            dataset.states,
+            timelineIndex,
+            useTimeline,
+            activeAlertsByState,
+            metric,
+            showWeatherFx && fxShowcase,
+          )
+        : {},
+    [dataset, timelineIndex, useTimeline, activeAlertsByState, metric, showWeatherFx, fxShowcase],
+  );
 
   const activeFxCount = useMemo(() => {
     if (!showWeatherFx || !dataset || fxShowcase) return 0;
-    const alerts = mode === 'live' ? alertsData?.byState : undefined;
     let count = 0;
-    for (const snap of Object.values(dataset.states)) {
-      const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
-      const res = classifySnapshotPhenomenon(slice, snap.current, alerts?.[snap.code], metric);
-      if (hasActiveMapFx(res.phenomenon, metric)) count++;
+    for (const p of Object.values(statePhenomena)) {
+      if (hasActiveMapFx(p.phenomenon, metric)) count++;
     }
     return count;
-  }, [showWeatherFx, dataset, fxShowcase, mode, alertsData, timelineIndex, useTimeline, metric]);
+  }, [showWeatherFx, dataset, fxShowcase, statePhenomena, metric]);
 
   const sourceLabel = dataset
     ? mode === 'historical'
@@ -457,11 +518,14 @@ export function App() {
         statesMeta={US_STATES}
         onSelectState={(code) => handleSelectState(code)}
         onRefresh={() => {
-          if (detailedStateMode && selectedCode) {
-            refreshCitiesPendingRef.current = true;
-            setCitiesRefreshCount((c) => c + 1);
-          }
-          void loadDataset({ targetMode: mode, start: startDate, end: endDate, refresh: true });
+          setRefreshTick((t) => t + 1);
+          void loadDataset({
+            targetMode: mode,
+            start: startDate,
+            end: endDate,
+            presetId: activePresetId,
+            refresh: true,
+          });
         }}
         onOpenExport={() => {
           setExportScope(selectedCode ? 'state' : 'national');
@@ -519,6 +583,7 @@ export function App() {
             showWeatherFx={showWeatherFx}
             onToggleWeatherFx={handleToggleWeatherFx}
             fxShowcase={fxShowcase}
+            statePhenomena={statePhenomena}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -527,6 +592,7 @@ export function App() {
                   mode={mode}
                   frames={radarFrames}
                   activeFrameIndex={radarFrameIndex}
+                  isPlaying={isRadarPlaying}
                   opacity={radarOpacity}
                   onLoadingChange={setRadarLoading}
                 />
@@ -538,7 +604,8 @@ export function App() {
                   useTimeline={useTimeline}
                   isDark={theme === 'dark'}
                   showcase={fxShowcase}
-                  alertsByState={mode === 'live' ? alertsData?.byState : undefined}
+                  statePhenomena={statePhenomena}
+                  alertsByState={activeAlertsByState}
                   detailedStateMode={detailedStateMode}
                   selectedCode={selectedCode}
                   stateCitiesWeather={stateCitiesWeather}
@@ -565,7 +632,8 @@ export function App() {
         <StateDrawer
           meta={selectedMeta}
           snapshot={dataset.states[selectedCode]!}
-          detail={stateDetail}
+          detail={activeDetail}
+          alerts={selectedAlerts}
           isLoading={detailLoading}
           mode={mode}
           unit={unit}
@@ -654,7 +722,8 @@ export function App() {
         scope={exportScope}
         onScopeChange={setExportScope}
         dataset={dataset}
-        detail={stateDetail}
+        detail={activeDetail}
+        alerts={selectedAlerts}
         unit={unit}
         timelineIndex={timelineIndex}
         useTimeline={useTimeline}
@@ -665,7 +734,8 @@ export function App() {
       <PrintSheet
         scope={exportScope}
         dataset={dataset}
-        detail={stateDetail}
+        detail={activeDetail}
+        alerts={selectedAlerts}
         unit={unit}
         timelineIndex={timelineIndex}
         useTimeline={useTimeline}

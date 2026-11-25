@@ -1,6 +1,6 @@
 import { Download, FileJson, FileSpreadsheet, Image, Printer, X } from './Icons';
 import { useState } from 'react';
-import type { StateDetailResponse, TempUnit, WeatherDatasetResponse } from '../../shared/types';
+import type { StateDetailResponse, TempUnit, WeatherAlert, WeatherDatasetResponse } from '../../shared/types';
 import { formatTemp, formatWind } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
 import {
@@ -12,6 +12,7 @@ import {
   triggerDownload,
 } from '../utils/exporters';
 import { resolveStateSlice } from '../utils/scales';
+import { useDismiss } from '../utils/useDismiss';
 
 interface ExportModalProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface ExportModalProps {
   onScopeChange: (s: 'national' | 'state') => void;
   dataset: WeatherDatasetResponse | null;
   detail: StateDetailResponse | null;
+  alerts?: WeatherAlert[];
   unit: TempUnit;
   timelineIndex: number;
   useTimeline: boolean;
@@ -34,6 +36,7 @@ export function ExportModal({
   onScopeChange,
   dataset,
   detail,
+  alerts = [],
   unit,
   timelineIndex,
   useTimeline,
@@ -42,11 +45,13 @@ export function ExportModal({
 }: ExportModalProps) {
   const [pngBusy, setPngBusy] = useState(false);
   const [pngError, setPngError] = useState<string | null>(null);
+  useDismiss(open, onClose);
 
   if (!open || !dataset) return null;
 
   const activeScope = scope === 'state' && detail ? 'state' : 'national';
   const sortedStates = getSortedStates(dataset.states);
+  const stateAlerts = detail?.alerts.length ? detail.alerts : alerts;
 
   const handleDownloadCsv = () => {
     if (activeScope === 'state' && detail) {
@@ -204,8 +209,9 @@ export function ExportModal({
                   </div>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Full printable sheet includes {detail.daily.length} daily rows, 24 hourly rows
-                  {detail.alerts.length > 0 ? `, and ${detail.alerts.length} NWS alerts` : ''}.
+                  Full printable sheet includes {detail.daily.length} daily rows,{' '}
+                  {Math.min(24, detail.hourly.length)} hourly rows
+                  {stateAlerts.length > 0 ? `, and ${stateAlerts.length} NWS alerts` : ''}.
                 </p>
               </div>
             ) : (

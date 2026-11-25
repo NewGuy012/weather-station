@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { HISTORICAL_PRESETS } from '../../shared/presets';
 import type { StateMeta, TempUnit, ThemeMode, WeatherMode } from '../../shared/types';
 import { isEditableTarget } from '../utils/mapViewport';
+import { useDismiss } from '../utils/useDismiss';
 
 interface TopBarProps {
   mode: WeatherMode;
@@ -58,6 +59,7 @@ export function TopBar({
   const [customStart, setCustomStart] = useState(startDate);
   const [customEnd, setCustomEnd] = useState(endDate);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
   const dateMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,30 +67,19 @@ export function TopBar({
     setCustomEnd(endDate);
   }, [startDate, endDate]);
 
-  useEffect(() => {
-    if (!dateMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (dateMenuRef.current && !dateMenuRef.current.contains(e.target as Node)) {
-        setDateMenuOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
-  }, [dateMenuOpen]);
+  useDismiss(dateMenuOpen, () => setDateMenuOpen(false), dateMenuRef);
+  useDismiss(searchOpen, () => setSearchOpen(false), searchRef);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSearchOpen(true);
-        setTimeout(() => searchInputRef.current?.focus(), 20);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
       } else if (e.key === '/' && !isEditableTarget(e.target)) {
         e.preventDefault();
         setSearchOpen(true);
-        setTimeout(() => searchInputRef.current?.focus(), 20);
-      } else if (e.key === 'Escape') {
-        setSearchOpen(false);
-        setDateMenuOpen(false);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
       }
     };
     window.addEventListener('keydown', onKey);
@@ -240,7 +231,7 @@ export function TopBar({
             </div>
           )}
 
-          <div className="relative shrink-0">
+          <div ref={searchRef} className="relative shrink-0">
             <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80">
               <Search size={13} className="shrink-0 text-slate-400" />
               <input
@@ -248,7 +239,6 @@ export function TopBar({
                 type="text"
                 value={searchQuery}
                 onFocus={() => setSearchOpen(true)}
-                onBlur={() => setTimeout(() => setSearchOpen(false), 160)}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
                   setSearchOpen(true);
@@ -267,8 +257,7 @@ export function TopBar({
                   <button
                     key={s.code}
                     type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
+                    onClick={() => {
                       onSelectState(s.code);
                       setSearchQuery('');
                       setSearchOpen(false);

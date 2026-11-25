@@ -23,6 +23,7 @@ import type {
   StateMeta,
   StateWeatherSnapshot,
   TempUnit,
+  WeatherAlert,
   WeatherMode,
 } from '../../shared/types';
 import {
@@ -35,7 +36,7 @@ import {
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
 import { classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';
-import { METRIC_SCALES, resolveMetricValue, resolveStateSlice } from '../utils/scales';
+import { METRIC_SCALES, resolveStateSlice } from '../utils/scales';
 import { DrawerWeatherBackdrop } from './DrawerWeatherBackdrop';
 import { HourlyChart } from './HourlyChart';
 import { WeatherIcon } from './WeatherIcon';
@@ -44,6 +45,7 @@ interface StateDrawerProps {
   meta: StateMeta;
   snapshot: StateWeatherSnapshot;
   detail: StateDetailResponse | null;
+  alerts?: WeatherAlert[];
   isLoading: boolean;
   mode: WeatherMode;
   unit: TempUnit;
@@ -160,6 +162,7 @@ export function StateDrawer({
   meta,
   snapshot,
   detail,
+  alerts = [],
   isLoading,
   mode,
   unit,
@@ -181,15 +184,16 @@ export function StateDrawer({
   citiesError = null,
 }: StateDrawerProps) {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
-  const [localTop10Open, setLocalTop10Open] = useState(detailedStateMode);
   const [isCompareOpen, setIsCompareOpen] = useState(compareCodes.length > 0);
 
-  const current = detail?.current ?? snapshot.current;
+  const activeDetail = detail?.code === meta.code ? detail : null;
+  const stateAlerts = activeDetail?.alerts.length ? activeDetail.alerts : alerts;
+  const current = activeDetail?.current ?? snapshot.current;
   const wmo = getWmoInfo(current.weatherCode);
-  const heroPhenomenon = classifySnapshotPhenomenon(current, current, detail?.alerts, metric);
+  const heroPhenomenon = classifySnapshotPhenomenon(current, current, stateAlerts, metric);
   const aqiInfo = aqiCategory(current.usAqi);
   const isComparing = compareCodes.includes(meta.code);
-  const isTop10Open = onToggleDetailedStateMode ? detailedStateMode : localTop10Open;
+  const isTop10Open = detailedStateMode;
   const top10Ref = useRef<HTMLDivElement | null>(null);
   const prevTop10OpenRef = useRef(isTop10Open);
 
@@ -201,14 +205,10 @@ export function StateDrawer({
   }, [isTop10Open]);
 
   const handleToggleTop10 = () => {
-    if (onToggleDetailedStateMode) {
-      onToggleDetailedStateMode();
-    } else {
-      setLocalTop10Open((v) => !v);
-    }
+    onToggleDetailedStateMode?.();
   };
 
-  const daily = detail?.daily ?? [];
+  const daily = activeDetail?.daily ?? [];
   const weekMin = daily.length > 0 ? Math.min(...daily.map((d) => d.tempMinF)) : current.tempLowF;
   const weekMax = daily.length > 0 ? Math.max(...daily.map((d) => d.tempMaxF)) : current.tempHighF;
   const weekSpan = Math.max(1, weekMax - weekMin);
@@ -219,7 +219,7 @@ export function StateDrawer({
     return timePart || iso;
   };
 
-  const fallbackTopCities = TOP_CITIES_BY_STATE[meta.code] ?? [];
+  const fallbackTopCities = useMemo(() => TOP_CITIES_BY_STATE[meta.code] ?? [], [meta.code]);
   const cityOptions = useMemo(() => {
     const baseCities =
       detailedStateMode && citiesWeather?.code === meta.code
@@ -229,7 +229,7 @@ export function StateDrawer({
           : meta.cities.map((c) => c.name);
     const seen = new Set(baseCities.map((n) => n.toLowerCase()));
     const result = [...baseCities];
-    const currentCity = selectedCity || detail?.city || snapshot.city;
+    const currentCity = selectedCity || activeDetail?.city || snapshot.city;
     if (currentCity && !seen.has(currentCity.toLowerCase())) {
       result.unshift(currentCity);
     }
@@ -241,14 +241,14 @@ export function StateDrawer({
     meta.code,
     meta.cities,
     selectedCity,
-    detail?.city,
+    activeDetail?.city,
     snapshot.city,
   ]);
 
   const activeCityValue = useMemo(() => {
-    const target = (selectedCity || detail?.city || snapshot.city).toLowerCase();
+    const target = (selectedCity || activeDetail?.city || snapshot.city).toLowerCase();
     return cityOptions.find((n) => n.toLowerCase() === target) ?? cityOptions[0] ?? '';
-  }, [cityOptions, selectedCity, detail?.city, snapshot.city]);
+  }, [cityOptions, selectedCity, activeDetail?.city, snapshot.city]);
 
   return (
     <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] lg:bottom-28 xl:bottom-14 dark:border-slate-700/70 dark:bg-slate-900/95">
@@ -296,12 +296,12 @@ export function StateDrawer({
             />
           </div>
 
-          {detail && (
+          {activeDetail && (
             <span
-              title={`Elev ${detail.elevationM}m • ${detail.timezone}`}
+              title={`Elev ${activeDetail.elevationM}m • ${activeDetail.timezone}`}
               className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400"
             >
-              Elev {detail.elevationM}m • {detail.timezone}
+              Elev {activeDetail.elevationM}m • {activeDetail.timezone}
             </span>
           )}
 
@@ -364,9 +364,9 @@ export function StateDrawer({
           </div>
         </div>
 
-        {mode === 'live' && detail?.alerts && detail.alerts.length > 0 && (
+        {mode === 'live' && stateAlerts.length > 0 && (
           <div className="space-y-1.5">
-            {detail.alerts.slice(0, 4).map((al) => {
+            {stateAlerts.slice(0, 4).map((al) => {
               const expanded = expandedAlertId === al.id;
               return (
                 <div
@@ -405,10 +405,10 @@ export function StateDrawer({
           </div>
         )}
 
-        {isLoading && !detail ? (
+        {isLoading && !activeDetail ? (
           <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
-        ) : detail?.hourly?.length ? (
-          <HourlyChart hourly={detail.hourly} unit={unit} />
+        ) : activeDetail?.hourly?.length ? (
+          <HourlyChart hourly={activeDetail.hourly} unit={unit} />
         ) : null}
 
         {daily.length > 0 && (
@@ -576,7 +576,7 @@ export function StateDrawer({
                   const slice = resolveStateSlice(c, timelineIndex, useTimeline);
                   const active = c.name.toLowerCase() === selectedCity.toLowerCase();
                   const scaleConfig = METRIC_SCALES[metric];
-                  const rawMetric = resolveMetricValue(scaleConfig, c.current, slice);
+                  const rawMetric = scaleConfig.extract(slice, c.current);
                   const metricDisplay = scaleConfig.formatMapValue(rawMetric, unit);
 
                   return (
@@ -676,6 +676,7 @@ export function StateDrawer({
             {compareCodes.map((c) => {
               const s = allStates[c];
               if (!s) return null;
+              const slice = resolveStateSlice(s, timelineIndex, useTimeline);
               const isCurrent = c === meta.code;
               return (
                 <div
@@ -693,9 +694,9 @@ export function StateDrawer({
                     <span className="text-slate-500 dark:text-slate-400">{s.city}</span>
                   </button>
                   <div className="flex items-center gap-2.5 tabular-nums">
-                    <span className="font-semibold">{formatTemp(s.current.temperatureF, unit)}</span>
+                    <span className="font-semibold">{formatTemp(slice.temperatureF, unit)}</span>
                     <span className="text-[11px] text-slate-400">
-                      {formatWind(s.current.windSpeedMph, unit)}
+                      {formatWind(slice.windSpeedMph, unit)}
                     </span>
                     <button
                       type="button"

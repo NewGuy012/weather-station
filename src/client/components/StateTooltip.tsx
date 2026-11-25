@@ -1,7 +1,7 @@
 import { AlertTriangle, Droplets, MapPin, Wind, X } from './Icons';
 import type { StateWeatherSnapshot, TempUnit, WeatherAlert } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
-import { classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';
+import { type WeatherPhenomenon, classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';
 import { getWmoInfo } from '../../shared/wmoCodes';
 import type { ResolvedStateSlice } from '../utils/scales';
 import { WeatherIcon } from './WeatherIcon';
@@ -13,7 +13,7 @@ interface HoverTooltipProps {
   x: number;
   y: number;
   alerts?: WeatherAlert[];
-  panActive?: boolean;
+  phenomenon?: WeatherPhenomenon;
 }
 
 export function HoverTooltip({
@@ -23,10 +23,11 @@ export function HoverTooltip({
   x,
   y,
   alerts = [],
-  panActive = false,
+  phenomenon,
 }: HoverTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
-  const phenom = classifySnapshotPhenomenon(slice, snapshot.current, alerts);
+  const resolvedPhenom =
+    phenomenon ?? classifySnapshotPhenomenon(slice, snapshot.current, alerts).phenomenon;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
 
@@ -51,7 +52,7 @@ export function HoverTooltip({
           <p className="text-[11px] text-slate-500 dark:text-slate-400">{snapshot.city}</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={slice.weatherCode} phenomenon={phenom.phenomenon} size={20} animated />
+          <WeatherIcon code={slice.weatherCode} phenomenon={resolvedPhenom} size={20} animated />
           <span className="tabular-nums text-lg font-semibold text-slate-900 dark:text-white">
             {formatTemp(slice.temperatureF, unit)}
           </span>
@@ -87,7 +88,7 @@ export function HoverTooltip({
       )}
 
       <div className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-        {panActive ? 'Move mouse to pan • Release Space to select' : 'Click state for forecast & details'}
+        Click state for forecast & details
       </div>
     </div>
   );
@@ -102,6 +103,7 @@ interface PinnedStateTooltipProps {
   mapWidth: number;
   mapHeight: number;
   alerts?: WeatherAlert[];
+  phenomenon?: WeatherPhenomenon;
   onClose: () => void;
 }
 
@@ -114,10 +116,12 @@ export function PinnedStateTooltip({
   mapWidth,
   mapHeight,
   alerts = [],
+  phenomenon,
   onClose,
 }: PinnedStateTooltipProps) {
   const wmo = getWmoInfo(slice.weatherCode);
-  const phenom = classifySnapshotPhenomenon(slice, snapshot.current, alerts);
+  const resolvedPhenom =
+    phenomenon ?? classifySnapshotPhenomenon(slice, snapshot.current, alerts).phenomenon;
   const leftPct = (svgX / mapWidth) * 100;
   const topPct = (svgY / mapHeight) * 100;
   const placeLeft = leftPct > 65;
@@ -155,7 +159,7 @@ export function PinnedStateTooltip({
 
       <div className="mt-1 flex items-baseline justify-between">
         <div className="flex items-center gap-1.5">
-          <WeatherIcon code={slice.weatherCode} phenomenon={phenom.phenomenon} size={18} animated />
+          <WeatherIcon code={slice.weatherCode} phenomenon={resolvedPhenom} size={18} animated />
           <span className="tabular-nums text-base font-bold text-slate-900 dark:text-white">
             {formatTemp(slice.temperatureF, unit, true)}
           </span>

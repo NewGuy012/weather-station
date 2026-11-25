@@ -1,6 +1,7 @@
 import type {
   StateDetailResponse,
   TempUnit,
+  WeatherAlert,
   WeatherDatasetResponse,
 } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
@@ -12,6 +13,7 @@ interface PrintSheetProps {
   scope: 'national' | 'state';
   dataset: WeatherDatasetResponse | null;
   detail: StateDetailResponse | null;
+  alerts?: WeatherAlert[];
   unit: TempUnit;
   timelineIndex: number;
   useTimeline: boolean;
@@ -21,6 +23,7 @@ export function PrintSheet({
   scope,
   dataset,
   detail,
+  alerts = [],
   unit,
   timelineIndex,
   useTimeline,
@@ -30,6 +33,7 @@ export function PrintSheet({
   const activeTime = resolveActiveTimestamp(dataset, timelineIndex, useTimeline);
   const showState = scope === 'state' && detail !== null;
   const sortedStates = getSortedStates(dataset.states);
+  const stateAlerts = detail?.alerts.length ? detail.alerts : alerts;
 
   return (
     <div className="print-only bg-white p-2 text-slate-900">
@@ -97,12 +101,12 @@ export function PrintSheet({
             </div>
           </div>
 
-          {detail.alerts.length > 0 && (
+          {stateAlerts.length > 0 && (
             <div className="print-card rounded-lg border border-rose-400 bg-rose-50 p-3">
               <div className="text-xs font-bold text-rose-800 uppercase">
-                Active NWS Alerts ({detail.alerts.length})
+                Active NWS Alerts ({stateAlerts.length})
               </div>
-              {detail.alerts.map((al) => (
+              {stateAlerts.map((al) => (
                 <div key={al.id} className="mt-1.5 text-xs">
                   <span className="font-semibold">{al.event}</span> — {al.areaDesc}
                   <p className="mt-0.5 text-[11px] text-slate-700">{al.headline}</p>
