@@ -13,6 +13,15 @@ export type TempUnit = 'F' | 'C';
 
 export type ThemeMode = 'light' | 'dark';
 
+export type ColormapId =
+  | 'default'
+  | 'viridis'
+  | 'plasma'
+  | 'inferno'
+  | 'cividis'
+  | 'coolwarm'
+  | 'turbo';
+
 export type USRegion =
   | 'Northeast'
   | 'Southeast'

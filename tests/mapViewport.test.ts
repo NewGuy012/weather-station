@@ -2,7 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MapCanvas } from '../src/client/components/MapCanvas';
+import { MetricToolbar } from '../src/client/components/MetricToolbar';
 import { StateDrawer } from '../src/client/components/StateDrawer';
+import { TopBar } from '../src/client/components/TopBar';
+import {
+  COLORMAPS,
+  getNextColormapId,
+  interpolateColor,
+  resolveMetricStops,
+  stopsToCssGradient,
+} from '../src/client/utils/scales';
 import seedHistorical from '../src/server/data/seedHistorical.json';
 import { STATE_BY_CODE } from '../src/server/data/states';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
@@ -185,7 +194,7 @@ describe('Map Shortcut Target Guards & Arrow Panning', () => {
 });
 
 describe('MapCanvas Pan & Zoom Controls Markup', () => {
-  test('renders pan and zoom controls with shortcut badges and shifts when drawer opens', () => {
+  test('renders pan and zoom controls horizontally on the top-left away from the right drawer', () => {
     const dataset = seedHistorical as unknown as WeatherDatasetResponse;
     const htmlDefault = renderToStaticMarkup(
       createElement(MapCanvas, {
@@ -208,6 +217,8 @@ describe('MapCanvas Pan & Zoom Controls Markup', () => {
     expect(htmlDefault).toContain('100%');
     expect(htmlDefault).toContain('aria-label="Zoom out map"');
     expect(htmlDefault).toContain('>-<');
+    expect(htmlDefault).toContain('top-4 left-3');
+    expect(htmlDefault).not.toContain('right-4');
     expect(htmlDefault).not.toContain('lg:right-[444px]');
 
     const htmlSelected = renderToStaticMarkup(
@@ -223,7 +234,9 @@ describe('MapCanvas Pan & Zoom Controls Markup', () => {
       }),
     );
 
-    expect(htmlSelected).toContain('lg:right-[444px]');
+    expect(htmlSelected).toContain('top-4 left-3');
+    expect(htmlSelected).not.toContain('right-4');
+    expect(htmlSelected).not.toContain('lg:right-[444px]');
   });
 
   test('places nearby city marker labels without colliding at identical positions', () => {
@@ -332,5 +345,148 @@ describe('MapCanvas Pan & Zoom Controls Markup', () => {
     expect(drawerHtml).toContain('3.82M');
     expect(drawerHtml).toContain('San Jose');
     expect(drawerHtml).toContain('Anaheim');
+
+    // StateDrawer header should use a city dropdown and not truncate state name, city name, or Top 10 city names
+    const headerSlice = drawerHtml.slice(0, drawerHtml.indexOf('Top 10 Populated Cities'));
+    expect(headerSlice).toContain('California');
+    expect(headerSlice).toContain('aria-label="Select city"');
+    expect(headerSlice).toContain('<option');
+    expect(headerSlice).toContain('Los Angeles');
+    expect(headerSlice).toMatch(/value="San Jose"[^>]*selected=""/);
+    expect(headerSlice).toContain('Print');
+    expect(headerSlice).not.toContain('truncate');
+    expect(drawerHtml).not.toContain('class="truncate font-medium"');
+
+    // Standard view uses the compact city dropdown instead of multi-row city pills
+    const standardDrawerHtml = renderToStaticMarkup(
+      createElement(StateDrawer, {
+        meta: STATE_BY_CODE.CA!,
+        snapshot: dataset.states.CA!,
+        detail: null,
+        isLoading: false,
+        mode: 'historical',
+        unit: 'F',
+        metric: 'temperature',
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCity: 'San Francisco',
+        onSelectCity: () => {},
+        compareCodes: [],
+        onToggleCompare: () => {},
+        allStates: dataset.states,
+        onSelectState: () => {},
+        onPrintState: () => {},
+        onClose: () => {},
+        detailedStateMode: false,
+        onToggleDetailedStateMode: () => {},
+      }),
+    );
+    expect(standardDrawerHtml).toContain('aria-label="Select city"');
+    expect(standardDrawerHtml).toContain('value="Los Angeles"');
+    expect(standardDrawerHtml).toMatch(/value="San Francisco"[^>]*selected=""/);
+    expect(standardDrawerHtml).toContain('value="Sacramento"');
+    expect(standardDrawerHtml).toContain('value="San Diego"');
+  });
+
+  test('renders TopBar on a single non-wrapping row with unit, theme, and Print / Export controls', () => {
+    const topBarHtml = renderToStaticMarkup(
+      createElement(TopBar, {
+        mode: 'historical',
+        onModeChange: () => {},
+        unit: 'F',
+        onUnitChange: () => {},
+        theme: 'dark',
+        onThemeToggle: () => {},
+        startDate: '2026-11-15',
+        endDate: '2026-11-19',
+        activePresetId: 'recent-nov-2026',
+        onSelectPreset: () => {},
+        onSelectCustomDates: () => {},
+        statesMeta: Object.values(STATE_BY_CODE),
+        onSelectState: () => {},
+        onRefresh: () => {},
+        onOpenExport: () => {},
+        isLoading: false,
+        sourceLabel: 'Recent 5-Day US Archive',
+      }),
+    );
+
+    expect(topBarHtml).toContain('flex-nowrap');
+    expect(topBarHtml).not.toContain('flex-wrap');
+    expect(topBarHtml).toContain('°F');
+    expect(topBarHtml).toContain('°C');
+    expect(topBarHtml).toContain('Switch to light theme');
+    expect(topBarHtml).toContain('Print / Export');
+  });
+
+  test('resolves custom and reversed colormaps and applies them to MetricToolbar and MapCanvas', () => {
+    const defaultStops = resolveMetricStops('temperature', 'default', false);
+    const viridisStops = resolveMetricStops('temperature', 'viridis', false);
+    const viridisReversed = resolveMetricStops('temperature', 'viridis', true);
+
+    expect(viridisStops[0]?.rgb).toEqual([68, 1, 84]);
+    expect(viridisStops[viridisStops.length - 1]?.rgb).toEqual([253, 231, 37]);
+    expect(viridisStops[0]?.label).toBe('0°');
+    expect(viridisStops[viridisStops.length - 1]?.label).toBe('105°+');
+    expect(viridisReversed[0]?.rgb).toEqual([253, 231, 37]);
+    expect(viridisReversed[viridisReversed.length - 1]?.rgb).toEqual([68, 1, 84]);
+    expect(interpolateColor(0, viridisStops, false)).toBe('rgb(68, 1, 84)');
+    expect(interpolateColor(0, defaultStops, false)).toBe('rgb(30, 58, 138)');
+    expect(getNextColormapId('default')).toBe(COLORMAPS[1]!.id);
+    expect(getNextColormapId(COLORMAPS[COLORMAPS.length - 1]!.id)).toBe('default');
+
+    const toolbarViridisHtml = renderToStaticMarkup(
+      createElement(MetricToolbar, {
+        metric: 'temperature',
+        onMetricChange: () => {},
+        colormap: 'viridis',
+        onColormapChange: () => {},
+        reverseColormap: false,
+        onToggleReverseColormap: () => {},
+        unit: 'F',
+        mode: 'historical',
+        showRadar: false,
+        onToggleRadar: () => {},
+        showWind: false,
+        onToggleWind: () => {},
+        showAlertPolygons: false,
+        onToggleAlertPolygons: () => {},
+        alertsCount: 0,
+      }),
+    );
+
+    expect(toolbarViridisHtml).toContain('Viridis');
+    expect(toolbarViridisHtml).toContain('Flip');
+    expect(toolbarViridisHtml).toContain('aria-label="Change colormap (current: Viridis)"');
+    expect(toolbarViridisHtml).toContain(stopsToCssGradient(viridisStops));
+
+    const dataset = seedHistorical as unknown as WeatherDatasetResponse;
+    const mapDefaultHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'temperature',
+        colormap: 'default',
+        unit: 'F',
+        isDark: true,
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCode: null,
+        onSelectState: () => {},
+      }),
+    );
+    const mapPlasmaHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'temperature',
+        colormap: 'plasma',
+        unit: 'F',
+        isDark: true,
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCode: null,
+        onSelectState: () => {},
+      }),
+    );
+    expect(mapPlasmaHtml).not.toBe(mapDefaultHtml);
   });
 });

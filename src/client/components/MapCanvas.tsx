@@ -1,6 +1,7 @@
 import { Hand, MapPinned, Minus, Plus, RotateCcw } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  ColormapId,
   GeoJsonFeatureCollection,
   MetricLayer,
   StateCitiesWeatherResponse,
@@ -32,7 +33,7 @@ import {
   panByOffset,
   zoomViewState,
 } from '../utils/mapViewport';
-import { METRIC_SCALES, interpolateColor, isColorLight } from '../utils/scales';
+import { METRIC_SCALES, interpolateColor, isColorLight, resolveMetricStops } from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
 import { WeatherIcon } from './WeatherIcon';
 import { geoPath } from 'd3-geo';
@@ -40,6 +41,8 @@ import { geoPath } from 'd3-geo';
 interface MapCanvasProps {
   states: Record<string, StateWeatherSnapshot>;
   metric: MetricLayer;
+  colormap?: ColormapId;
+  reverseColormap?: boolean;
   unit: TempUnit;
   isDark: boolean;
   timelineIndex: number;
@@ -88,6 +91,8 @@ export function resolveStateSlice(
 export function MapCanvas({
   states,
   metric,
+  colormap = 'default',
+  reverseColormap = false,
   unit,
   isDark,
   timelineIndex,
@@ -110,6 +115,10 @@ export function MapCanvas({
 }: MapCanvasProps) {
   const geometries = useMemo(() => getUsStateGeometries(), []);
   const scaleConfig = METRIC_SCALES[metric];
+  const activeStops = useMemo(
+    () => resolveMetricStops(metric, colormap, reverseColormap),
+    [metric, colormap, reverseColormap],
+  );
 
   const [hovered, setHovered] = useState<{ code: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<MapViewState>(INITIAL_MAP_VIEW);
@@ -442,7 +451,7 @@ export function MapCanvas({
             ? scaleConfig.extractTimeline(slice.metricSource, c.current)
             : scaleConfig.extractCurrent(c.current);
           const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
-          const fill = interpolateColor(rawMetric, scaleConfig.stops, isDark);
+          const fill = interpolateColor(rawMetric, activeStops, isDark);
           const label = `${c.name} ${displayVal}`;
           const boxWidth = Math.max(76, Math.min(138, label.length * 5.6 + 22));
           return {
@@ -499,6 +508,7 @@ export function MapCanvas({
     timelineIndex,
     useTimeline,
     scaleConfig,
+    activeStops,
     unit,
     isDark,
     view.zoom,
@@ -586,7 +596,7 @@ export function MapCanvas({
                     ? scaleConfig.extractTimeline(slice.metricSource, snap.current)
                     : scaleConfig.extractCurrent(snap.current)
                   : null;
-              const fill = interpolateColor(rawMetric, scaleConfig.stops, isDark);
+              const fill = interpolateColor(rawMetric, activeStops, isDark);
               const isSelected = selectedCode === item.meta.code;
               const isHovered = hovered?.code === item.meta.code;
 
@@ -678,7 +688,7 @@ export function MapCanvas({
               ? scaleConfig.extractTimeline(slice.metricSource, snap.current)
               : scaleConfig.extractCurrent(snap.current);
             const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
-            const fill = interpolateColor(rawMetric, scaleConfig.stops, isDark);
+            const fill = interpolateColor(rawMetric, activeStops, isDark);
             const lightFill = isColorLight(fill);
             const isCompact = COMPACT_NE_CODES.has(item.meta.code);
             const hasAlerts = (alertsByState[item.meta.code]?.length ?? 0) > 0;
@@ -878,7 +888,7 @@ export function MapCanvas({
       {/* Detailed State Mode Prompt / Loading Pill */}
       {detailedStateMode && (!selectedCode || citiesLoading) && (
         <div
-          className="no-print pointer-events-none fixed top-20 left-1/2 z-20 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-white/90 px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-md dark:border-emerald-400/30 dark:bg-slate-900/90 dark:text-slate-200"
+          className="no-print pointer-events-none fixed top-32 left-1/2 z-20 -translate-x-1/2 rounded-full border border-emerald-500/30 bg-white/90 px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-md md:top-20 dark:border-emerald-400/30 dark:bg-slate-900/90 dark:text-slate-200"
         >
           {citiesLoading
             ? `Loading top 10 cities in ${selectedGeo?.meta.name ?? selectedCode}...`
@@ -909,9 +919,7 @@ export function MapCanvas({
 
       {/* Map Detailed Mode, Pan & Zoom Controls */}
       <div
-        className={`no-print absolute bottom-24 z-20 flex flex-col gap-1 rounded-xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md transition-[right] duration-200 dark:border-slate-700/60 dark:bg-slate-900/85 ${
-          selectedCode ? 'right-4 lg:right-[444px]' : 'right-4'
-        }`}
+        className="no-print absolute top-4 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -929,7 +937,7 @@ export function MapCanvas({
                   ? 'Exit detailed state mode (D)'
                   : 'Detailed state mode: zoom into state & show top 10 cities (D)'
               }
-              className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 transition ${
+              className={`flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 transition ${
                 detailedStateMode
                   ? 'bg-emerald-600 text-white shadow-xs dark:bg-emerald-500 dark:text-slate-950'
                   : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -946,7 +954,7 @@ export function MapCanvas({
                 D
               </kbd>
             </button>
-            <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+            <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
           </>
         )}
         <button
@@ -959,7 +967,7 @@ export function MapCanvas({
               ? 'Disable pan mode (P) • Arrow keys pan'
               : 'Enable pan mode (P) • Hold Space to pan'
           }
-          className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 transition ${
+          className={`flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 transition ${
             isPanActive
               ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
               : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -976,48 +984,48 @@ export function MapCanvas({
             P
           </kbd>
         </button>
-        <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
-        <button
-          type="button"
-          onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
-          disabled={!canZoomIn}
-          aria-label="Zoom in map"
-          title="Zoom in (+ / =) • Scroll wheel"
-          className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <Plus size={14} />
-          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-            +
-          </kbd>
-        </button>
-        <div
-          aria-label={`Map zoom ${zoomPct}%`}
-          className="py-0.5 text-center tabular-nums text-[10px] font-semibold text-slate-500 dark:text-slate-400"
-        >
-          {zoomPct}%
-        </div>
+        <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
         <button
           type="button"
           onClick={handleControlClick(() => zoomByStep(-ZOOM_BUTTON_STEP))}
           disabled={!canZoomOut}
           aria-label="Zoom out map"
           title="Zoom out (-) • Scroll wheel"
-          className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+          className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <Minus size={14} />
           <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
             -
           </kbd>
         </button>
+        <div
+          aria-label={`Map zoom ${zoomPct}%`}
+          className="min-w-[38px] px-1 text-center tabular-nums text-[11px] font-semibold text-slate-600 dark:text-slate-300"
+        >
+          {zoomPct}%
+        </div>
+        <button
+          type="button"
+          onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
+          disabled={!canZoomIn}
+          aria-label="Zoom in map"
+          title="Zoom in (+ / =) • Scroll wheel"
+          className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <Plus size={14} />
+          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+            +
+          </kbd>
+        </button>
         {showReset && (
           <>
-            <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+            <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
             <button
               type="button"
               onClick={handleControlClick(resetView)}
               aria-label="Reset map view"
               title="Reset zoom and pan (0)"
-              className="flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
+              className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
             >
               <RotateCcw size={14} />
               <kbd className="rounded bg-sky-100/80 px-1 py-0.5 text-[9px] font-semibold leading-none text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">

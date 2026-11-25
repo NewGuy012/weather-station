@@ -14,7 +14,7 @@ import {
   Wind,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type {
   MetricLayer,
   StateCitiesWeatherResponse,
@@ -114,25 +114,91 @@ export function StateDrawer({
     return timePart || iso;
   };
 
+  const cityOptions = useMemo(() => {
+    const baseCities =
+      detailedStateMode && citiesWeather?.code === meta.code
+        ? citiesWeather.cities.map((c) => c.name)
+        : detailedStateMode && fallbackTopCities.length > 0
+          ? fallbackTopCities.map((c) => c.name)
+          : meta.cities.map((c) => c.name);
+    const seen = new Set(baseCities.map((n) => n.toLowerCase()));
+    const result = [...baseCities];
+    const currentCity = selectedCity || detail?.city || snapshot.city;
+    if (currentCity && !seen.has(currentCity.toLowerCase())) {
+      result.unshift(currentCity);
+    }
+    return result;
+  }, [
+    detailedStateMode,
+    citiesWeather,
+    fallbackTopCities,
+    meta.code,
+    meta.cities,
+    selectedCity,
+    detail?.city,
+    snapshot.city,
+  ]);
+
+  const activeCityValue = useMemo(() => {
+    const target = (selectedCity || detail?.city || snapshot.city).toLowerCase();
+    return cityOptions.find((n) => n.toLowerCase() === target) ?? cityOptions[0] ?? '';
+  }, [cityOptions, selectedCity, detail?.city, snapshot.city]);
+
   return (
     <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] dark:border-slate-700/70 dark:bg-slate-900/95">
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-base font-semibold text-slate-900 dark:text-white">{meta.name}</h2>
+      <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">{meta.name}</h2>
             <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {meta.code}
             </span>
             <span className="shrink-0 text-[11px] text-slate-400">{meta.region}</span>
           </div>
-          <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-            {detail?.city ?? snapshot.city}
-            {detail ? ` • Elev ${detail.elevationM}m • ${detail.timezone}` : ''}
-          </p>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close state details"
+            className="-mt-0.5 -mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <X size={15} />
+          </button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="relative inline-flex items-center">
+            <select
+              aria-label="Select city"
+              value={activeCityValue}
+              onChange={(e) => onSelectCity(e.target.value)}
+              className="appearance-none rounded-lg border border-slate-200 bg-slate-50 py-1 pr-6 pl-2 text-xs font-medium text-slate-800 transition hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800/90 dark:text-slate-100 dark:hover:border-slate-600"
+            >
+              {cityOptions.map((cityName) => (
+                <option
+                  key={cityName}
+                  value={cityName}
+                  className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  {cityName}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={12}
+              className="pointer-events-none absolute right-2 text-slate-400 dark:text-slate-400"
+            />
+          </div>
+
+          {detail && (
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Elev {detail.elevationM}m • {detail.timezone}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {onToggleDetailedStateMode && (
             <button
               type="button"
@@ -143,7 +209,7 @@ export function StateDrawer({
                   ? 'Exit Detailed State Mode (D)'
                   : 'Zoom in & load top 10 populated cities (D)'
               }
-              className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+              className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
                 detailedStateMode
                   ? 'bg-emerald-600 text-white'
                   : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -157,7 +223,7 @@ export function StateDrawer({
             type="button"
             onClick={() => onToggleCompare(meta.code)}
             title={isComparing ? 'Remove from comparison' : 'Compare state'}
-            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
               isComparing
                 ? 'bg-sky-600 text-white'
                 : 'border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -170,55 +236,25 @@ export function StateDrawer({
             type="button"
             onClick={onPrintState}
             title="Print state weather report"
-            className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="ml-auto flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            <Printer size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close state details"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          >
-            <X size={15} />
+            <Printer size={12} />
+            <span>Print</span>
           </button>
         </div>
       </div>
 
-      {/* Multi-City Selector (hidden when full Top 10 list is active below) */}
-      {!detailedStateMode && (
-        <div className="flex flex-wrap gap-1 border-b border-slate-100 px-4 py-2 dark:border-slate-800">
-          {meta.cities.map((c) => {
-            const active = c.name.toLowerCase() === selectedCity.toLowerCase();
-            return (
-              <button
-                key={c.name}
-                type="button"
-                onClick={() => onSelectCity(c.name)}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-                  active
-                    ? 'bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                }`}
-              >
-                {c.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Scrollable Body */}
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3.5">
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-2.5">
         {/* Hero Readout */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
-              <WeatherIcon code={current.weatherCode} size={28} />
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+              <WeatherIcon code={current.weatherCode} size={24} />
             </div>
             <div>
               <div className="flex items-baseline gap-2">
-                <span className="tabular-nums text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <span className="tabular-nums text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px] dark:text-white">
                   {formatTemp(current.temperatureF, unit, true)}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -276,13 +312,13 @@ export function StateDrawer({
                       key={`${c.rank}-${c.name}`}
                       type="button"
                       onClick={() => onSelectCity(c.name)}
-                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition sm:px-2.5 ${
                         active
                           ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
                           : 'bg-white/85 text-slate-800 hover:bg-white dark:bg-slate-900/75 dark:text-slate-100 dark:hover:bg-slate-900'
                       }`}
                     >
-                      <div className="flex min-w-0 items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                         <span
                           className={`w-4 shrink-0 text-right tabular-nums text-[10px] font-semibold ${
                             active ? 'text-white/80 dark:text-slate-950/75' : 'text-slate-400'
@@ -290,7 +326,7 @@ export function StateDrawer({
                         >
                           {c.rank}
                         </span>
-                        <span className="truncate font-medium">{c.name}</span>
+                        <span className="leading-tight font-medium">{c.name}</span>
                         <span
                           className={`shrink-0 tabular-nums text-[10px] ${
                             active ? 'text-white/75 dark:text-slate-950/70' : 'text-slate-400'
@@ -299,13 +335,13 @@ export function StateDrawer({
                           {formatPopulation(c.population)}
                         </span>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 tabular-nums">
+                      <div className="flex shrink-0 items-center gap-1.5 tabular-nums sm:gap-2">
                         <WeatherIcon code={slice.weatherCode} size={14} />
                         <span className="font-semibold">
                           {formatTemp(slice.temperatureF, unit, true)}
                         </span>
                         <span
-                          className={`w-14 text-right text-[10px] ${
+                          className={`w-12 text-right text-[10px] sm:w-14 ${
                             active ? 'text-white/85 dark:text-slate-950/80' : 'text-slate-400'
                           }`}
                         >
@@ -390,18 +426,18 @@ export function StateDrawer({
 
         {/* Loading skeleton or Hourly Chart */}
         {isLoading && !detail ? (
-          <div className="h-32 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
+          <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
         ) : detail?.hourly?.length ? (
           <HourlyChart hourly={detail.hourly} unit={unit} />
         ) : null}
 
         {/* Daily Forecast / Window Breakdown */}
         {daily.length > 0 && (
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="mb-2 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+            <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
               {mode === 'historical' ? 'Daily Archive Summary' : '7-Day Forecast'}
             </div>
-            <div className="space-y-2">
+            <div className="grid grid-cols-[max-content_16px_minmax(28px,auto)_1fr_minmax(28px,auto)] items-center gap-x-2 gap-y-1 text-xs">
               {daily.map((d) => {
                 const leftPct = ((d.tempMinF - weekMin) / weekSpan) * 100;
                 const widthPct = Math.max(8, ((d.tempMaxF - d.tempMinF) / weekSpan) * 100);
@@ -413,8 +449,8 @@ export function StateDrawer({
                 });
 
                 return (
-                  <div key={d.date} className="grid grid-cols-[88px_24px_34px_1fr_34px] items-center gap-2 text-xs">
-                    <span className="truncate text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  <Fragment key={d.date}>
+                    <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 dark:text-slate-300">
                       {dayLabel}
                     </span>
                     <WeatherIcon code={d.weatherCode} size={14} />
@@ -427,10 +463,10 @@ export function StateDrawer({
                         style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                       />
                     </div>
-                    <span className="tabular-nums text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                    <span className="text-right tabular-nums text-[11px] font-semibold text-slate-800 dark:text-slate-100">
                       {formatTemp(d.tempMaxF, unit)}
                     </span>
-                  </div>
+                  </Fragment>
                 );
               })}
             </div>
@@ -438,15 +474,15 @@ export function StateDrawer({
         )}
 
         {/* Atmospheric Metrics Grid */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl border border-slate-200/80 p-2.5 dark:border-slate-800">
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <Wind size={12} />
-              <span>Wind & Gusts</span>
+              <span>Wind</span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 tabular-nums text-sm font-semibold">
+            <div className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[13px] font-semibold">
               <ArrowUpRight
-                size={14}
+                size={13}
                 style={{ transform: `rotate(${(current.windDirectionDeg + 180) % 360}deg)` }}
                 className="text-sky-500"
               />
@@ -461,25 +497,25 @@ export function StateDrawer({
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/80 p-2.5 dark:border-slate-800">
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <Droplets size={12} />
-              <span>Humidity & Dew Pt</span>
+              <span>Humidity</span>
             </div>
-            <div className="mt-1 tabular-nums text-sm font-semibold">
+            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
               {Math.round(current.humidity)}%
             </div>
             <div className="text-[11px] text-slate-400 tabular-nums">
-              Dew point {formatTemp(current.dewPointF, unit, true)}
+              Dew pt {formatTemp(current.dewPointF, unit, true)}
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/80 p-2.5 dark:border-slate-800">
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <Gauge size={12} />
-              <span>Pressure & Precip</span>
+              <span>Pressure</span>
             </div>
-            <div className="mt-1 tabular-nums text-sm font-semibold">
+            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
               {current.pressureHpa !== null ? `${Math.round(current.pressureHpa)} hPa` : '—'}
             </div>
             <div className="text-[11px] text-slate-400 tabular-nums">
@@ -487,9 +523,9 @@ export function StateDrawer({
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/80 p-2.5 dark:border-slate-800">
-            <div className="text-[11px] text-slate-400">US AQI & UV Index</div>
-            <div className="mt-1 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
+            <div className="text-[11px] text-slate-400">AQI & UV</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold tabular-nums">
               <span>{current.usAqi !== null ? `${Math.round(current.usAqi)} AQI` : 'N/A'}</span>
               {current.usAqi !== null && (
                 <span
@@ -508,14 +544,14 @@ export function StateDrawer({
 
         {/* Sunrise / Sunset */}
         {(current.sunrise || current.sunset) && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-2 text-xs dark:border-slate-800">
+          <div className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <Sunrise size={14} className="text-amber-500" />
+              <Sunrise size={13} className="text-amber-500" />
               <span>Sunrise</span>
               <span className="tabular-nums font-semibold">{formatSunTime(current.sunrise)}</span>
             </div>
             <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <Sunset size={14} className="text-orange-500" />
+              <Sunset size={13} className="text-orange-500" />
               <span>Sunset</span>
               <span className="tabular-nums font-semibold">{formatSunTime(current.sunset)}</span>
             </div>

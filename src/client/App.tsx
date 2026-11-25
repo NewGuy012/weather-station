@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
 import type {
   AlertsResponse,
+  ColormapId,
   MetricLayer,
   RadarFrame,
   RadarFramesResponse,
@@ -14,6 +15,8 @@ import type {
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
+import { isEditableTarget } from './utils/mapViewport';
+import { COLORMAP_BY_ID, getNextColormapId } from './utils/scales';
 import { BroadcastDock } from './components/BroadcastDock';
 import { DopplerRadarOverlay } from './components/DopplerRadarOverlay';
 import { ExportModal } from './components/ExportModal';
@@ -32,11 +35,24 @@ function getInitialTheme(): ThemeMode {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+function getInitialColormap(): ColormapId {
+  if (typeof window === 'undefined') return 'default';
+  const saved = window.localStorage.getItem('ws-colormap') as ColormapId | null;
+  return saved && saved in COLORMAP_BY_ID ? saved : 'default';
+}
+
+function getInitialReverseColormap(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem('ws-colormap-reverse') === '1';
+}
+
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [mode, setMode] = useState<WeatherMode>('historical');
   const [unit, setUnit] = useState<TempUnit>('F');
   const [metric, setMetric] = useState<MetricLayer>('temperature');
+  const [colormap, setColormap] = useState<ColormapId>(getInitialColormap);
+  const [reverseColormap, setReverseColormap] = useState<boolean>(getInitialReverseColormap);
 
   const [startDate, setStartDate] = useState(DEFAULT_HISTORICAL_PRESET.startDate);
   const [endDate, setEndDate] = useState(DEFAULT_HISTORICAL_PRESET.endDate);
@@ -99,6 +115,31 @@ export function App() {
     }
     window.localStorage.setItem('ws-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem('ws-colormap', colormap);
+  }, [colormap]);
+
+  useEffect(() => {
+    window.localStorage.setItem('ws-colormap-reverse', reverseColormap ? '1' : '0');
+  }, [reverseColormap]);
+
+  useEffect(() => {
+    if (exportOpen) return;
+    const handleColormapShortcut = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      if (isEditableTarget(e.target)) return;
+      if (e.key.toLowerCase() !== 'c') return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        setReverseColormap((r) => !r);
+      } else {
+        setColormap((c) => getNextColormapId(c));
+      }
+    };
+    window.addEventListener('keydown', handleColormapShortcut);
+    return () => window.removeEventListener('keydown', handleColormapShortcut);
+  }, [exportOpen]);
 
   useEffect(() => {
     fetch('/api/meta')
@@ -379,7 +420,7 @@ export function App() {
 
   const sourceLabel = dataset
     ? mode === 'historical'
-      ? `${dataset.presetLabel ?? 'Archive'} • ${dataset.startDate} to ${dataset.endDate}`
+      ? dataset.presetLabel ?? 'Historical Archive'
       : `Live NOAA/Open-Meteo ${dataset.cached ? '• Cached' : '• Fresh'}`
     : 'Loading 50-state archive...';
 
@@ -435,6 +476,8 @@ export function App() {
           <MapCanvas
             states={dataset.states}
             metric={metric}
+            colormap={colormap}
+            reverseColormap={reverseColormap}
             unit={unit}
             isDark={theme === 'dark'}
             timelineIndex={timelineIndex}
@@ -514,6 +557,10 @@ export function App() {
       <MetricToolbar
         metric={metric}
         onMetricChange={setMetric}
+        colormap={colormap}
+        onColormapChange={setColormap}
+        reverseColormap={reverseColormap}
+        onToggleReverseColormap={() => setReverseColormap((r) => !r)}
         unit={unit}
         mode={mode}
         showRadar={showRadar}

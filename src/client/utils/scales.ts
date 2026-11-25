@@ -1,10 +1,23 @@
-import type { MetricLayer, StateCurrentMetrics, TempUnit, TimelinePoint } from '../../shared/types';
+import type {
+  ColormapId,
+  MetricLayer,
+  StateCurrentMetrics,
+  TempUnit,
+  TimelinePoint,
+} from '../../shared/types';
 import { fToC } from '../../shared/units';
 
 export interface ColorStop {
   value: number;
   rgb: [number, number, number];
   label: string;
+}
+
+export interface ColormapOption {
+  id: ColormapId;
+  label: string;
+  description: string;
+  palette?: [number, number, number][];
 }
 
 export interface MetricScaleConfig {
@@ -155,6 +168,189 @@ export const METRIC_LIST: MetricScaleConfig[] = [
   METRIC_SCALES.aqi,
   METRIC_SCALES.uvIndex,
 ];
+
+export const COLORMAPS: ColormapOption[] = [
+  {
+    id: 'default',
+    label: 'Classic',
+    description: 'Metric-tailored scale',
+  },
+  {
+    id: 'viridis',
+    label: 'Viridis',
+    description: 'Perceptual • Colorblind-safe',
+    palette: [
+      [68, 1, 84],
+      [72, 40, 120],
+      [62, 74, 137],
+      [49, 104, 142],
+      [38, 130, 142],
+      [53, 183, 121],
+      [144, 215, 67],
+      [253, 231, 37],
+    ],
+  },
+  {
+    id: 'plasma',
+    label: 'Plasma',
+    description: 'High-contrast sequential',
+    palette: [
+      [13, 8, 135],
+      [84, 2, 163],
+      [139, 10, 165],
+      [185, 50, 137],
+      [219, 92, 104],
+      [244, 136, 73],
+      [254, 188, 43],
+      [240, 249, 33],
+    ],
+  },
+  {
+    id: 'inferno',
+    label: 'Inferno',
+    description: 'Dark-to-warm luminance',
+    palette: [
+      [12, 8, 38],
+      [66, 10, 104],
+      [128, 31, 108],
+      [187, 55, 84],
+      [233, 98, 44],
+      [251, 155, 6],
+      [247, 211, 64],
+      [252, 255, 164],
+    ],
+  },
+  {
+    id: 'cividis',
+    label: 'Cividis',
+    description: 'Deuteranopia-safe scale',
+    palette: [
+      [0, 32, 76],
+      [42, 63, 108],
+      [87, 92, 109],
+      [124, 123, 120],
+      [166, 156, 117],
+      [211, 192, 103],
+      [253, 231, 55],
+    ],
+  },
+  {
+    id: 'coolwarm',
+    label: 'Cool–Warm',
+    description: 'Diverging blue-to-red',
+    palette: [
+      [59, 76, 192],
+      [98, 130, 234],
+      [141, 176, 254],
+      [221, 221, 221],
+      [244, 154, 123],
+      [221, 95, 75],
+      [180, 4, 38],
+    ],
+  },
+  {
+    id: 'turbo',
+    label: 'Turbo',
+    description: 'Vivid full spectrum',
+    palette: [
+      [48, 18, 59],
+      [65, 69, 171],
+      [40, 188, 235],
+      [72, 240, 127],
+      [164, 252, 60],
+      [250, 186, 57],
+      [234, 79, 13],
+      [122, 4, 3],
+    ],
+  },
+];
+
+export const COLORMAP_BY_ID: Record<ColormapId, ColormapOption> = Object.fromEntries(
+  COLORMAPS.map((c) => [c.id, c]),
+) as Record<ColormapId, ColormapOption>;
+
+export function getNextColormapId(current: ColormapId): ColormapId {
+  const idx = COLORMAPS.findIndex((c) => c.id === current);
+  return COLORMAPS[(idx + 1) % COLORMAPS.length]?.id ?? 'default';
+}
+
+function samplePaletteRgb(
+  palette: [number, number, number][],
+  normalizedPos: number,
+): [number, number, number] {
+  const t = Math.max(0, Math.min(1, normalizedPos));
+  const scaled = t * (palette.length - 1);
+  const lo = Math.floor(scaled);
+  const hi = Math.min(palette.length - 1, Math.ceil(scaled));
+  const frac = scaled - lo;
+  const a = palette[lo]!;
+  const b = palette[hi]!;
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * frac),
+    Math.round(a[1] + (b[1] - a[1]) * frac),
+    Math.round(a[2] + (b[2] - a[2]) * frac),
+  ];
+}
+
+function sampleStopValue(stops: ColorStop[], normalizedPos: number): number {
+  const t = Math.max(0, Math.min(1, normalizedPos));
+  const scaled = t * (stops.length - 1);
+  const lo = Math.floor(scaled);
+  const hi = Math.min(stops.length - 1, Math.ceil(scaled));
+  const frac = scaled - lo;
+  const a = stops[lo]!.value;
+  const b = stops[hi]!.value;
+  return a + (b - a) * frac;
+}
+
+/**
+ * Resolve color stops for a metric under the active colormap and direction.
+ * Preserves the metric's piecewise perceptual domain breakpoints and labels.
+ */
+export function resolveMetricStops(
+  metric: MetricLayer,
+  colormap: ColormapId = 'default',
+  reverse = false,
+): ColorStop[] {
+  const baseStops = METRIC_SCALES[metric].stops;
+  const option = COLORMAP_BY_ID[colormap] ?? COLORMAPS[0]!;
+
+  if (!option.palette) {
+    if (!reverse) return baseStops;
+    return baseStops.map((stop, idx) => ({
+      ...stop,
+      rgb: baseStops[baseStops.length - 1 - idx]!.rgb,
+    }));
+  }
+
+  const palette = reverse ? [...option.palette].reverse() : option.palette;
+  const count = Math.max(baseStops.length, palette.length);
+  const midIdx = Math.floor(count / 2);
+  const baseMidLabel = baseStops[Math.floor(baseStops.length / 2)]?.label ?? '';
+
+  return Array.from({ length: count }, (_, idx) => {
+    const u = count === 1 ? 0 : idx / (count - 1);
+    const label =
+      idx === 0
+        ? baseStops[0]!.label
+        : idx === midIdx
+          ? baseMidLabel
+          : idx === count - 1
+            ? baseStops[baseStops.length - 1]!.label
+            : '';
+    return {
+      value: sampleStopValue(baseStops, u),
+      rgb: samplePaletteRgb(palette, u),
+      label,
+    };
+  });
+}
+
+export function stopsToCssGradient(stops: ColorStop[]): string {
+  return `linear-gradient(to right, ${stops
+    .map((s) => `rgb(${s.rgb[0]}, ${s.rgb[1]}, ${s.rgb[2]})`)
+    .join(', ')})`;
+}
 
 export function interpolateColor(
   value: number | null,

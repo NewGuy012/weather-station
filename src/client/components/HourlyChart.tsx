@@ -21,10 +21,10 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
   }
 
   const width = 360;
-  const height = 118;
+  const height = 88;
   const padX = 10;
-  const padTop = 18;
-  const padBottom = 22;
+  const padTop = 12;
+  const padBottom = 18;
   const plotW = width - padX * 2;
   const plotH = height - padTop - padBottom;
 
@@ -61,8 +61,8 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
   };
 
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-800/40">
-      <div className="mb-1.5 flex items-center justify-between text-[11px]">
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+      <div className="mb-1 flex items-center justify-between text-[11px]">
         <span className="font-medium text-slate-600 dark:text-slate-300">
           Hourly Trend ({points.length}h)
         </span>
