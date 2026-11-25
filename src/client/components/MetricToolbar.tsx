@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Check,
   ChevronDown,
+  CloudRain,
   Palette,
   Radar,
   RotateCcw,
@@ -32,6 +33,9 @@ interface MetricToolbarProps {
   onToggleRadar: () => void;
   showWind: boolean;
   onToggleWind: () => void;
+  showWeatherFx?: boolean;
+  onToggleWeatherFx?: () => void;
+  fxShowcase?: boolean;
   showAlertPolygons: boolean;
   onToggleAlertPolygons: () => void;
   alertsCount: number;
@@ -52,6 +56,9 @@ export function MetricToolbar({
   onToggleRadar,
   showWind,
   onToggleWind,
+  showWeatherFx = false,
+  onToggleWeatherFx,
+  fxShowcase = false,
   showAlertPolygons,
   onToggleAlertPolygons,
   alertsCount,
@@ -184,6 +191,29 @@ export function MetricToolbar({
             <Wind size={14} />
             <span>Wind Flow</span>
           </button>
+
+          {onToggleWeatherFx && (
+            <button
+              type="button"
+              onClick={onToggleWeatherFx}
+              aria-pressed={showWeatherFx}
+              title="Toggle animated Weather FX on map (A)"
+              className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
+                showWeatherFx
+                  ? 'bg-indigo-600 text-white shadow-xs dark:bg-indigo-500 dark:text-slate-950'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <CloudRain size={14} />
+              <span>Weather FX</span>
+              {showWeatherFx && fxShowcase && (
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 rounded-full bg-amber-300 dark:bg-slate-950"
+                />
+              )}
+            </button>
+          )}
 
           {mode === 'live' && (
             <button

@@ -68,6 +68,11 @@ interface MapCanvasProps {
   onSelectCity?: (cityName: string) => void;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
+  /** Whether animated Weather FX are active (adds subtle alert pulse & enables 'A' shortcut) */
+  showWeatherFx?: boolean;
+  onToggleWeatherFx?: () => void;
+  /** Called when map zoom factor changes */
+  onZoomChange?: (zoom: number) => void;
   /** Incrementing counter to reset pan and zoom back to the default view */
   resetTrigger?: number;
   /** Called when zoom or pan differs from (or returns to) the default view */
@@ -99,6 +104,9 @@ export function MapCanvas({
   selectedCity = '',
   onSelectCity,
   overlays,
+  showWeatherFx = false,
+  onToggleWeatherFx,
+  onZoomChange,
   resetTrigger,
   onViewModifiedChange,
   mapContainerRef,
@@ -372,6 +380,12 @@ export function MapCanvas({
         return;
       }
 
+      if (e.key.toLowerCase() === 'a' && !e.repeat && onToggleWeatherFx) {
+        e.preventDefault();
+        onToggleWeatherFx();
+        return;
+      }
+
       const zoomAction = getZoomShortcutAction(e);
       if (zoomAction) {
         e.preventDefault();
@@ -412,13 +426,17 @@ export function MapCanvas({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [shortcutsEnabled, getStageSize, zoomByStep, onToggleDetailedStateMode]);
+  }, [shortcutsEnabled, getStageSize, zoomByStep, onToggleDetailedStateMode, onToggleWeatherFx]);
 
   const showReset = isViewModified(view);
 
   useEffect(() => {
     onViewModifiedChange?.(showReset);
   }, [showReset, onViewModifiedChange]);
+
+  useEffect(() => {
+    onZoomChange?.(view.zoom);
+  }, [view.zoom, onZoomChange]);
 
   const prevResetTriggerRef = useRef(resetTrigger);
   useEffect(() => {
@@ -662,6 +680,11 @@ export function MapCanvas({
                 <path
                   key={poly.id}
                   d={poly.d}
+                  className={
+                    showWeatherFx && (poly.severity === 'Extreme' || poly.severity === 'Severe')
+                      ? 'ws-alert-pulse'
+                      : undefined
+                  }
                   fill={
                     poly.severity === 'Extreme'
                       ? 'rgba(225, 29, 72, 0.34)'

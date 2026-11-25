@@ -15,8 +15,13 @@ import type {
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
+import {
+  type WeatherFxIntensity,
+  classifyWeatherPhenomenon,
+  hasActiveMapFx,
+} from '../shared/weatherPhenomena';
 import { isEditableTarget } from './utils/mapViewport';
-import { COLORMAP_BY_ID, getNextColormapId } from './utils/scales';
+import { COLORMAP_BY_ID, getNextColormapId, resolveStateSlice } from './utils/scales';
 import { BroadcastDock } from './components/BroadcastDock';
 import { DopplerRadarOverlay } from './components/DopplerRadarOverlay';
 import { ExportModal } from './components/ExportModal';
@@ -26,6 +31,7 @@ import { MetricToolbar } from './components/MetricToolbar';
 import { PrintSheet } from './components/PrintSheet';
 import { StateDrawer } from './components/StateDrawer';
 import { TopBar } from './components/TopBar';
+import { WeatherEffectsOverlay } from './components/WeatherEffectsOverlay';
 import { WindOverlay } from './components/WindOverlay';
 
 function readStorage(key: string): string | null {
@@ -121,6 +127,10 @@ export function App() {
   const [radarLoading, setRadarLoading] = useState(false);
 
   const [showWind, setShowWind] = useState(false);
+  const [showWeatherFx, setShowWeatherFx] = useState(false);
+  const [fxIntensity, setFxIntensity] = useState<WeatherFxIntensity>('normal');
+  const [fxShowcase, setFxShowcase] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
   const [showAlertPolygons, setShowAlertPolygons] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState<'national' | 'state'>('national');
@@ -370,6 +380,10 @@ export function App() {
     setDetailedStateMode((prev) => !prev);
   }, []);
 
+  const handleToggleWeatherFx = useCallback(() => {
+    setShowWeatherFx((prev) => !prev);
+  }, []);
+
   const handleToggleCompare = useCallback((code: string) => {
     setCompareCodes((prev) => {
       if (prev.includes(code)) return prev.filter((c) => c !== code);
@@ -421,6 +435,33 @@ export function App() {
   };
 
   const useTimeline = mode === 'historical' || isTimelinePlaying || timelineIndex > 0;
+
+  const activeFxCount = useMemo(() => {
+    if (!showWeatherFx || !dataset || fxShowcase) return 0;
+    const alerts = mode === 'live' ? alertsData?.byState : undefined;
+    let count = 0;
+    for (const snap of Object.values(dataset.states)) {
+      const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
+      const res = classifyWeatherPhenomenon(
+        {
+          weatherCode: slice.weatherCode,
+          precipitationMm: slice.precipitationMm,
+          temperatureF: slice.temperatureF,
+          apparentTemperatureF: slice.apparentTemperatureF,
+          windSpeedMph: slice.windSpeedMph,
+          windDirectionDeg: slice.windDirectionDeg,
+          humidity: slice.humidity,
+          uvIndex: snap.current.uvIndex,
+          usAqi: snap.current.usAqi,
+          cloudCoverPct: snap.current.cloudCoverPct,
+        },
+        alerts?.[snap.code],
+        metric,
+      );
+      if (hasActiveMapFx(res.phenomenon, metric)) count++;
+    }
+    return count;
+  }, [showWeatherFx, dataset, fxShowcase, mode, alertsData, timelineIndex, useTimeline, metric]);
 
   const sourceLabel = dataset
     ? mode === 'historical'
@@ -504,6 +545,9 @@ export function App() {
             onSelectCity={setSelectedCity}
             resetTrigger={mapResetTrigger}
             onViewModifiedChange={setMapViewModified}
+            onZoomChange={setMapZoom}
+            showWeatherFx={showWeatherFx}
+            onToggleWeatherFx={handleToggleWeatherFx}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -514,6 +558,21 @@ export function App() {
                   activeFrameIndex={radarFrameIndex}
                   opacity={radarOpacity}
                   onLoadingChange={setRadarLoading}
+                />
+                <WeatherEffectsOverlay
+                  visible={showWeatherFx}
+                  states={dataset.states}
+                  metric={metric}
+                  timelineIndex={timelineIndex}
+                  useTimeline={useTimeline}
+                  isDark={theme === 'dark'}
+                  intensity={fxIntensity}
+                  showcase={fxShowcase}
+                  alertsByState={mode === 'live' ? alertsData?.byState : undefined}
+                  detailedStateMode={detailedStateMode}
+                  selectedCode={selectedCode}
+                  stateCitiesWeather={stateCitiesWeather}
+                  zoom={mapZoom}
                 />
                 <WindOverlay
                   visible={showWind}
@@ -576,6 +635,9 @@ export function App() {
         onToggleRadar={() => setShowRadar((v) => !v)}
         showWind={showWind}
         onToggleWind={() => setShowWind((v) => !v)}
+        showWeatherFx={showWeatherFx}
+        onToggleWeatherFx={handleToggleWeatherFx}
+        fxShowcase={fxShowcase}
         showAlertPolygons={showAlertPolygons}
         onToggleAlertPolygons={() => setShowAlertPolygons((v) => !v)}
         alertsCount={alertsData?.totalActive ?? 0}
@@ -610,6 +672,12 @@ export function App() {
           radarOpacity={radarOpacity}
           onRadarOpacityChange={setRadarOpacity}
           radarLoading={radarLoading}
+          showWeatherFx={showWeatherFx}
+          fxIntensity={fxIntensity}
+          onFxIntensityChange={setFxIntensity}
+          fxShowcase={fxShowcase}
+          onToggleFxShowcase={() => setFxShowcase((v) => !v)}
+          activeFxCount={activeFxCount}
         />
       )}
 

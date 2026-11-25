@@ -1,5 +1,6 @@
-import { Pause, Play, Radar, SkipBack, SkipForward } from 'lucide-react';
+import { CloudRain, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
 import type { RadarFrame, WeatherMode } from '../../shared/types';
+import type { WeatherFxIntensity } from '../../shared/weatherPhenomena';
 
 interface BroadcastDockProps {
   mode: WeatherMode;
@@ -19,6 +20,12 @@ interface BroadcastDockProps {
   radarOpacity: number;
   onRadarOpacityChange: (op: number) => void;
   radarLoading: boolean;
+  showWeatherFx?: boolean;
+  fxIntensity?: WeatherFxIntensity;
+  onFxIntensityChange?: (intensity: WeatherFxIntensity) => void;
+  fxShowcase?: boolean;
+  onToggleFxShowcase?: () => void;
+  activeFxCount?: number;
 }
 
 function formatTimelineTick(iso: string | undefined): string {
@@ -55,15 +62,88 @@ export function BroadcastDock({
   radarOpacity,
   onRadarOpacityChange,
   radarLoading,
+  showWeatherFx = false,
+  fxIntensity = 'normal',
+  onFxIntensityChange,
+  fxShowcase = false,
+  onToggleFxShowcase,
+  activeFxCount = 0,
 }: BroadcastDockProps) {
   const hasTimeline = timelineHours.length > 1;
   const activeRadarFrame = radarFrames[radarFrameIndex];
 
-  if (!hasTimeline && !showRadar) return null;
+  if (!hasTimeline && !showRadar && !showWeatherFx) return null;
 
   return (
     <div className="no-print pointer-events-none fixed inset-x-0 bottom-3 z-20 flex justify-center px-3">
       <div className="pointer-events-auto flex w-full max-w-[540px] flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-3.5 py-2.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
+        {showWeatherFx && (
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 text-xs ${
+              showRadar || hasTimeline
+                ? 'border-b border-slate-100 pb-2 dark:border-slate-800'
+                : ''
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <CloudRain size={13} className="text-indigo-500 dark:text-indigo-400" />
+              <span className="font-semibold text-slate-800 dark:text-slate-100">Weather FX</span>
+              {fxShowcase ? (
+                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                  Preview Showcase
+                </span>
+              ) : (
+                <span className="tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
+                  {activeFxCount > 0 ? `${activeFxCount} active` : 'Clear skies'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {onFxIntensityChange && (
+                <div
+                  role="group"
+                  aria-label="Weather FX intensity"
+                  className="flex items-center rounded-lg bg-slate-100 p-0.5 text-[10px] font-medium dark:bg-slate-800"
+                >
+                  {(['subtle', 'normal', 'dramatic'] as const).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => onFxIntensityChange(level)}
+                      aria-pressed={fxIntensity === level}
+                      className={`rounded-md px-1.5 py-0.5 capitalize transition ${
+                        fxIntensity === level
+                          ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {onToggleFxShowcase && (
+                <button
+                  type="button"
+                  onClick={onToggleFxShowcase}
+                  aria-pressed={fxShowcase}
+                  title="Preview all weather animations across US regions for testing"
+                  className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold transition ${
+                    fxShowcase
+                      ? 'bg-amber-500 text-white shadow-xs dark:bg-amber-400 dark:text-slate-950'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Sparkles size={11} />
+                  <span>FX Showcase</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {showRadar && (
           <div className="flex flex-col gap-1.5 border-b border-slate-100 pb-2 dark:border-slate-800">
             <div className="flex items-center justify-between gap-2 text-xs">

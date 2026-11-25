@@ -1,4 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { BroadcastDock } from '../src/client/components/BroadcastDock';
+import { MapCanvas } from '../src/client/components/MapCanvas';
+import { MetricToolbar } from '../src/client/components/MetricToolbar';
+import { WeatherEffectsOverlay } from '../src/client/components/WeatherEffectsOverlay';
 import seedHistorical from '../src/server/data/seedHistorical.json';
 import type { WeatherAlert, WeatherDatasetResponse } from '../src/shared/types';
 import {
@@ -256,5 +262,124 @@ describe('Weather Phenomena Classifier', () => {
       { rank: 3, name: 'San Jose' },
     ]);
     expect(Object.keys(cityShowcase)).toEqual(['Los Angeles', 'San Diego', 'San Jose']);
+  });
+});
+
+describe('Weather FX UI Controls & Map Overlay Markup', () => {
+  test('renders Weather FX toolbar toggle off by default and BroadcastDock FX Showcase controls', () => {
+    const offToolbarHtml = renderToStaticMarkup(
+      createElement(MetricToolbar, {
+        metric: 'precipitation',
+        onMetricChange: () => {},
+        onColormapChange: () => {},
+        onToggleReverseColormap: () => {},
+        unit: 'F',
+        mode: 'historical',
+        showRadar: false,
+        onToggleRadar: () => {},
+        showWind: false,
+        onToggleWind: () => {},
+        showWeatherFx: false,
+        onToggleWeatherFx: () => {},
+        fxShowcase: false,
+        showAlertPolygons: false,
+        onToggleAlertPolygons: () => {},
+        alertsCount: 0,
+      }),
+    );
+    expect(offToolbarHtml).toContain('Weather FX');
+    expect(offToolbarHtml).toContain('aria-pressed="false"');
+
+    const dockHtml = renderToStaticMarkup(
+      createElement(BroadcastDock, {
+        mode: 'historical',
+        timelineHours: ['2026-11-15T00:00Z'],
+        timelineIndex: 0,
+        onTimelineChange: () => {},
+        isTimelinePlaying: false,
+        onToggleTimelinePlay: () => {},
+        timelineSpeed: 1,
+        onCycleTimelineSpeed: () => {},
+        showRadar: false,
+        radarFrames: [],
+        radarFrameIndex: 0,
+        onRadarFrameChange: () => {},
+        isRadarPlaying: false,
+        onToggleRadarPlay: () => {},
+        radarOpacity: 0.75,
+        onRadarOpacityChange: () => {},
+        radarLoading: false,
+        showWeatherFx: true,
+        fxIntensity: 'dramatic',
+        onFxIntensityChange: () => {},
+        fxShowcase: true,
+        onToggleFxShowcase: () => {},
+        activeFxCount: 12,
+      }),
+    );
+    expect(dockHtml).toContain('Weather FX');
+    expect(dockHtml).toContain('Preview Showcase');
+    expect(dockHtml).toContain('FX Showcase');
+    expect(dockHtml).toContain('dramatic');
+
+    const dataset = seedHistorical as unknown as WeatherDatasetResponse;
+    const hiddenOverlayHtml = renderToStaticMarkup(
+      createElement(WeatherEffectsOverlay, {
+        visible: false,
+        states: dataset.states,
+        metric: 'precipitation',
+        timelineIndex: 30,
+        useTimeline: true,
+        isDark: false,
+        intensity: 'normal',
+        showcase: false,
+      }),
+    );
+    expect(hiddenOverlayHtml).toBe('');
+
+    const visibleOverlayHtml = renderToStaticMarkup(
+      createElement(WeatherEffectsOverlay, {
+        visible: true,
+        states: dataset.states,
+        metric: 'precipitation',
+        timelineIndex: 30,
+        useTimeline: true,
+        isDark: true,
+        intensity: 'normal',
+        showcase: true,
+      }),
+    );
+    expect(visibleOverlayHtml).toContain('<canvas');
+    expect(visibleOverlayHtml).toContain('width="1950"');
+    expect(visibleOverlayHtml).toContain('height="1220"');
+
+    const mapWithPulseHtml = renderToStaticMarkup(
+      createElement(MapCanvas, {
+        states: dataset.states,
+        metric: 'temperature',
+        unit: 'F',
+        isDark: true,
+        timelineIndex: 0,
+        useTimeline: true,
+        selectedCode: null,
+        onSelectState: () => {},
+        showWeatherFx: true,
+        showAlertPolygons: true,
+        alertPolygons: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              geometry: {
+                type: 'Polygon',
+                coordinates: [[[-98, 35], [-97, 35], [-97, 36], [-98, 35]]],
+              },
+              properties: { id: 'p1', severity: 'Extreme' },
+            },
+          ],
+        },
+      }),
+    );
+    expect(mapWithPulseHtml).toContain('ws-alert-pulse');
   });
 });

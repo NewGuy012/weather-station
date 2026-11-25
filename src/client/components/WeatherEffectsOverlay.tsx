@@ -57,7 +57,7 @@ export interface WeatherEffectsOverlayProps {
 
 interface StateRegionGeom {
   code: string;
-  path: Path2D;
+  path: Path2D | null;
   minX: number;
   minY: number;
   width: number;
@@ -104,7 +104,7 @@ interface ZoneRuntime {
 
 interface ActiveRenderZone {
   key: string;
-  clipPath: Path2D;
+  clipPath: Path2D | null;
   minX: number;
   minY: number;
   width: number;
@@ -134,7 +134,7 @@ function buildStateRegions(): StateRegionGeom[] {
   }
 
   const regions: StateRegionGeom[] = geometries.map((g) => {
-    const path = new Path2D(g.pathD);
+    const path = typeof Path2D !== 'undefined' ? new Path2D(g.pathD) : null;
     const minX = g.bounds[0][0];
     const minY = g.bounds[0][1];
     const maxX = g.bounds[1][0];
@@ -146,7 +146,7 @@ function buildStateRegions(): StateRegionGeom[] {
     const anchors: [number, number][] = [];
     const cloudAnchors: [number, number][] = [];
 
-    if (probeCtx) {
+    if (probeCtx && path) {
       if (probeCtx.isPointInPath(path, g.centroid[0], g.centroid[1])) {
         anchors.push([g.centroid[0], g.centroid[1]]);
       }
@@ -192,14 +192,16 @@ function buildStateRegions(): StateRegionGeom[] {
     };
   });
 
-  cachedRegions = regions;
-  cachedRegionsByCode = Object.fromEntries(regions.map((r) => [r.code, r]));
+  if (typeof Path2D !== 'undefined') {
+    cachedRegions = regions;
+    cachedRegionsByCode = Object.fromEntries(regions.map((r) => [r.code, r]));
+  }
   return regions;
 }
 
 function getRegionsMap(): Record<string, StateRegionGeom> {
-  buildStateRegions();
-  return cachedRegionsByCode!;
+  const regions = buildStateRegions();
+  return cachedRegionsByCode ?? Object.fromEntries(regions.map((r) => [r.code, r]));
 }
 
 function pickCloudPositions(
@@ -570,7 +572,9 @@ export function WeatherEffectsOverlay({
         const zoneFallH = Math.max(22, Math.min(48, zone.height * 0.42)) * zoomScale;
 
         ctx.save();
-        ctx.clip(zone.clipPath);
+        if (zone.clipPath) {
+          ctx.clip(zone.clipPath);
+        }
         ctx.globalAlpha = zoneAlpha;
 
         // 1. Lightning updates & sheet flash (underneath clouds & rain)
