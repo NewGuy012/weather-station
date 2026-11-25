@@ -21,8 +21,9 @@ Minimalist, interactive 50-state US weather atlas built on the **Bun TypeScript*
 
 | Layer | Technology / Source | Notes |
 | :--- | :--- | :--- |
-| Runtime & Bundler | **Bun** (`Bun.serve`, HTML imports, `bun:sqlite`, `bun test`) | Zero Webpack / Vite |
-| Frontend | **React 19**, **TypeScript**, **Tailwind CSS v4**, **d3-geo** | Minimalist glass UI |
+| Edge Runtime & API | **Cloudflare Workers**, **Hono**, **Vite 7** (`@cloudflare/vite-plugin`, `wrangler`) | Edge SPA + `/api/*` Worker (also supports local Bun server via `dev:bun`) |
+| Frontend | **React 19**, **TypeScript**, **Tailwind CSS v4** (`@tailwindcss/vite`), **d3-geo** | Minimalist glass UI |
+| Caching | **Cloudflare Cache API** + isolate memory cache (Workers) / **`bun:sqlite`** (Bun) | Runtime-agnostic [`WeatherCacheStore`](src/server/cacheTypes.ts) |
 | Weather & Archive | **Open-Meteo** Forecast, ERA5 Archive & Air Quality APIs | 50-state batched, no key |
 | Severe Alerts | **NOAA / NWS** `api.weather.gov` | Active alerts & polygons |
 | Doppler Radar | **NOAA OpenGeo MRMS WMS** & **IEM NEXRAD Archive** | Live & historical loops |
@@ -31,27 +32,44 @@ Minimalist, interactive 50-state US weather atlas built on the **Bun TypeScript*
 
 ```bash
 bun install
-bun run dev
+bun run dev        # Vite + Cloudflare Workers dev server (requires Node.js for Miniflare)
+# or
+bun run dev:bun    # Local Bun full-stack dev server (no Node.js required)
 ```
 
-Open `http://localhost:3000`.
+### Deploy to Cloudflare Workers
+
+```bash
+bun run check                  # Typecheck, build client + worker bundles, and dry-run Wrangler deploy
+bun run build && bun run deploy # Build and deploy to Cloudflare Workers via Wrangler
+```
 
 ### Scripts
 
 ```bash
-bun run dev        # Start full-stack Bun dev server with HMR
-bun run start      # Run in production mode
-bun test           # Run unit & API test suite
-bun run typecheck  # Run strict TypeScript compiler checks
+bun run dev        # Start Vite + Cloudflare Workers dev server with HMR (requires Node.js)
+bun run build      # Typecheck all tsconfig project references and build client + Worker
+bun run preview    # Build and preview the production bundle locally
+bun run check      # Typecheck, build, and run `wrangler deploy --dry-run`
+bun run deploy     # Deploy to Cloudflare Workers
+bun run cf-typegen # Regenerate `worker-configuration.d.ts` via `wrangler types`
+bun run dev:bun    # Start local Bun.serve dev server with HMR (SQLite cache)
+bun run start:bun  # Run local Bun.serve in production mode
+bun test           # Run unit, Worker, & API test suite
+bun run typecheck  # Run strict TypeScript project-reference checks (`tsc -b`)
 bun run seed       # Regenerate the 50-state baseline historical snapshot
 ```
 
 ## Project Structure
 
 ```text
+index.html         # Vite client entrypoint
+vite.config.ts     # Vite + React + Tailwind v4 + @cloudflare/vite-plugin
+wrangler.json      # Cloudflare Workers & static assets configuration
 src/
 ├── client/        # React UI, Albers map, radar/wind canvases, print & export views
-├── server/        # Bun.serve() entrypoint, API router, SQLite cache, data providers
+├── worker/        # Cloudflare Worker Hono entrypoint & Workers cache adapter
+├── server/        # Runtime-agnostic API router, data providers, SQLite cache, Bun entrypoint
 └── shared/        # Shared TypeScript types, WMO codes, presets, unit formatters
-tests/             # Unit, API router, and CSV exporter tests
+tests/             # Unit, Worker, API router, and CSV exporter tests
 ```

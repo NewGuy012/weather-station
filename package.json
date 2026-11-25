@@ -5,14 +5,21 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --hot src/server/index.ts",
-    "start": "NODE_ENV=production bun src/server/index.ts",
-    "typecheck": "bunx tsc --noEmit",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "tsc -b && vite build && vite preview",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "check": "tsc -b && vite build && wrangler deploy --dry-run",
+    "typecheck": "tsc -b",
     "test": "bun test",
-    "seed": "bun run src/server/scripts/generateSeed.ts"
+    "seed": "bun run src/server/scripts/generateSeed.ts",
+    "dev:bun": "bun --hot src/server/index.ts",
+    "start:bun": "NODE_ENV=production bun src/server/index.ts"
   },
   "dependencies": {
     "d3-geo": "^3.1.1",
+    "hono": "^4.11.1",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -20,13 +27,19 @@
     "us-atlas": "^3.0.1"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.52.1",
+    "@tailwindcss/vite": "^4.1.0",
     "@types/bun": "latest",
     "@types/d3-geo": "^3.1.0",
+    "@types/node": "^24.10.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/topojson-client": "^3.1.5",
+    "@vitejs/plugin-react": "^5.1.1",
     "bun-plugin-tailwind": "latest",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "wrangler": "^4.136.1"
   }
 }

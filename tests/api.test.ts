@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { handleApiRequest } from '../src/server/api';
 import { WeatherCache } from '../src/server/cache';
 import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
+import { WorkerWeatherCache, clearWorkerMemoryCache } from '../src/worker/cache';
+import workerApp from '../src/worker/index';
 
 describe('API Router', () => {
   test('serves health, meta, and default historical seed dataset with 50 states', async () => {
@@ -108,5 +110,61 @@ describe('API Router', () => {
     expect(cachedCitiesJson.code).toBe('CA');
 
     cache.close();
+  });
+});
+
+describe('Cloudflare Worker Entrypoint & Cache', () => {
+  test('WorkerWeatherCache stores, retrieves, and expires JSON and binary entries', async () => {
+    clearWorkerMemoryCache();
+    const cache = new WorkerWeatherCache();
+    const now = 2_000_000;
+
+    await cache.setJson('live:sample', { temp: 74 }, 5_000, now);
+    expect((await cache.getJson<{ temp: number }>('live:sample', now + 1000))?.value.temp).toBe(74);
+    expect(await cache.getJson('live:sample', now + 6000)).toBeNull();
+
+    await cache.setJson('hist:sample', { temp: 31 }, null, now);
+    expect((await cache.getJson<{ temp: number }>('hist:sample', now + 999_999_999))?.value.temp).toBe(31);
+
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    await cache.setBlob('radar:sample', pngBytes, 'image/png', 10_000, now);
+    const blobHit = await cache.getBlob('radar:sample', now + 500);
+    expect(blobHit?.contentType).toBe('image/png');
+    expect(Array.from(blobHit?.data ?? [])).toEqual([137, 80, 78, 71]);
+
+    expect(cache.stats()).toEqual({
+      jsonCount: 1,
+      blobCount: 1,
+      backend: 'cloudflare-workers',
+    });
+
+    clearWorkerMemoryCache();
+  });
+
+  test('Hono Worker routes /api/* requests and serves 50-state baseline dataset', async () => {
+    clearWorkerMemoryCache();
+
+    const healthRes = await workerApp.fetch(new Request('http://localhost/api/health'));
+    expect(healthRes.status).toBe(200);
+    const healthJson = (await healthRes.json()) as {
+      ok: boolean;
+      cache: { backend?: string };
+    };
+    expect(healthJson.ok).toBe(true);
+    expect(healthJson.cache.backend).toBe('cloudflare-workers');
+
+    const metaRes = await workerApp.fetch(new Request('http://localhost/api/meta'));
+    expect(metaRes.status).toBe(200);
+    const metaJson = (await metaRes.json()) as { states: unknown[] };
+    expect(metaJson.states).toHaveLength(50);
+
+    const statesRes = await workerApp.fetch(new Request('http://localhost/api/states'));
+    expect(statesRes.status).toBe(200);
+    const statesJson = (await statesRes.json()) as WeatherDatasetResponse;
+    expect(statesJson.source).toBe('seed-archive');
+    expect(Object.keys(statesJson.states)).toHaveLength(50);
+
+    const unknownRes = await workerApp.fetch(new Request('http://localhost/api/does-not-exist'));
+    expect(unknownRes.status).toBe(404);
   });
 });

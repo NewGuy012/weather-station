@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["vite/client", "./worker-configuration.d.ts"]
+  },
+  "include": [
+    "src/worker",
+    "src/server/api.ts",
+    "src/server/cacheTypes.ts",
+    "src/server/data",
+    "src/server/providers",
+    "src/shared"
+  ]
+}

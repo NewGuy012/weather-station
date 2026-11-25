@@ -1,14 +1,11 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { BlobCacheHit, CacheHit, CacheStats, WeatherCacheStore } from './cacheTypes';
 
-export interface CacheHit<T> {
-  value: T;
-  createdAt: number;
-  expiresAt: number | null;
-}
+export type { BlobCacheHit, CacheHit, CacheStats, WeatherCacheStore };
 
-export class WeatherCache {
+export class WeatherCache implements WeatherCacheStore {
   private db: Database;
 
   constructor(dbPath = '.data/weather-cache.sqlite') {
@@ -118,12 +115,13 @@ export class WeatherCache {
     this.db.query('DELETE FROM blob_cache WHERE expires_at IS NOT NULL AND expires_at <= ?').run(now);
   }
 
-  stats(): { jsonCount: number; blobCount: number } {
+  stats(): CacheStats {
     const jsonRow = this.db.query<{ c: number }, []>('SELECT COUNT(*) AS c FROM json_cache').get();
     const blobRow = this.db.query<{ c: number }, []>('SELECT COUNT(*) AS c FROM blob_cache').get();
     return {
       jsonCount: jsonRow?.c ?? 0,
       blobCount: blobRow?.c ?? 0,
+      backend: 'sqlite',
     };
   }
 

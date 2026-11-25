@@ -8,7 +8,7 @@ import type {
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
-import { WeatherCache } from './cache';
+import type { WeatherCacheStore } from './cacheTypes';
 import seedHistorical from './data/seedHistorical.json';
 import { STATE_BY_CODE, US_STATES } from './data/states';
 import { TOP_CITIES_BY_STATE } from './data/topCities';
@@ -82,24 +82,24 @@ function resolveHistoricalRange(url: URL):
 }
 
 export async function getCachedAlerts(
-  cache: WeatherCache,
+  cache: WeatherCacheStore,
   forceRefresh = false,
 ): Promise<AlertsResponse> {
   const key = 'live:alerts';
   if (!forceRefresh) {
-    const hit = cache.getJson<AlertsResponse>(key);
+    const hit = await cache.getJson<AlertsResponse>(key);
     if (hit) {
       return { ...hit.value, cached: true };
     }
   }
   const fresh = await fetchActiveNwsAlerts();
-  cache.setJson(key, fresh, ALERTS_TTL_MS);
+  await cache.setJson(key, fresh, ALERTS_TTL_MS);
   return fresh;
 }
 
 export async function handleApiRequest(
   req: Request,
-  cache: WeatherCache,
+  cache: WeatherCacheStore,
 ): Promise<Response | null> {
   const url = new URL(req.url);
   const path = url.pathname;
@@ -110,7 +110,11 @@ export async function handleApiRequest(
 
   try {
     if (path === '/api/health') {
-      return Response.json({ ok: true, cache: cache.stats(), timestamp: new Date().toISOString() });
+      return Response.json({
+        ok: true,
+        cache: await cache.stats(),
+        timestamp: new Date().toISOString(),
+      });
     }
 
     if (path === '/api/meta') {
@@ -131,7 +135,7 @@ export async function handleApiRequest(
       if (mode === 'live') {
         const key = 'live:states';
         if (!forceRefresh) {
-          const hit = cache.getJson<WeatherDatasetResponse>(key);
+          const hit = await cache.getJson<WeatherDatasetResponse>(key);
           if (hit) {
             return Response.json({ ...hit.value, cached: true });
           }
@@ -143,7 +147,7 @@ export async function handleApiRequest(
         if (alerts) {
           dataset.alertsCount = alerts.totalActive;
         }
-        cache.setJson(key, dataset, LIVE_STATES_TTL_MS);
+        await cache.setJson(key, dataset, LIVE_STATES_TTL_MS);
         return Response.json(dataset);
       }
 
@@ -165,7 +169,7 @@ export async function handleApiRequest(
 
       const key = `hist:states:${startDate}:${endDate}`;
       if (!forceRefresh) {
-        const hit = cache.getJson<WeatherDatasetResponse>(key);
+        const hit = await cache.getJson<WeatherDatasetResponse>(key);
         if (hit) {
           return Response.json({ ...hit.value, cached: true });
         }
@@ -178,7 +182,7 @@ export async function handleApiRequest(
         presetLabel: preset?.label,
         defaultFrameIndex: preset?.defaultFrameIndex,
       });
-      cache.setJson(key, dataset, null);
+      await cache.setJson(key, dataset, null);
       return Response.json(dataset);
     }
 
@@ -207,7 +211,7 @@ export async function handleApiRequest(
             : `hist:cities:${code}:${range!.startDate}:${range!.endDate}`;
 
         if (!forceRefresh) {
-          const hit = cache.getJson<StateCitiesWeatherResponse>(cacheKey);
+          const hit = await cache.getJson<StateCitiesWeatherResponse>(cacheKey);
           if (hit) {
             return Response.json({ ...hit.value, cached: true });
           }
@@ -220,7 +224,7 @@ export async function handleApiRequest(
           endDate: range?.ok ? range.endDate : undefined,
           defaultFrameIndex: range?.ok ? range.preset?.defaultFrameIndex : undefined,
         });
-        cache.setJson(cacheKey, citiesWeather, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
+        await cache.setJson(cacheKey, citiesWeather, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
         return Response.json(citiesWeather);
       }
 
@@ -234,7 +238,7 @@ export async function handleApiRequest(
           : `hist:detail:${code}:${city}:${startDate}:${endDate}`;
 
       if (!forceRefresh) {
-        const hit = cache.getJson<StateDetailResponse>(cacheKey);
+        const hit = await cache.getJson<StateDetailResponse>(cacheKey);
         if (hit) {
           const detail = { ...hit.value, cached: true };
           if (mode === 'live') {
@@ -258,7 +262,7 @@ export async function handleApiRequest(
         detail.alerts = alerts?.byState[code] ?? [];
       }
 
-      cache.setJson(cacheKey, detail, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
+      await cache.setJson(cacheKey, detail, mode === 'live' ? LIVE_DETAIL_TTL_MS : null);
       return Response.json(detail);
     }
 
@@ -276,12 +280,12 @@ export async function handleApiRequest(
       }
 
       const key = 'live:radar:frames';
-      const hit = cache.getJson<RadarFramesResponse>(key);
+      const hit = await cache.getJson<RadarFramesResponse>(key);
       if (hit) {
         return Response.json(hit.value);
       }
       const frames = await fetchLiveRadarFrames();
-      cache.setJson(key, frames, RADAR_FRAMES_TTL_MS);
+      await cache.setJson(key, frames, RADAR_FRAMES_TTL_MS);
       return Response.json(frames);
     }
 
@@ -298,9 +302,9 @@ export async function handleApiRequest(
       }
 
       const key = `radar:${mode}:${region}:${ts}`;
-      const hit = cache.getBlob(key);
+      const hit = await cache.getBlob(key);
       if (hit) {
-        return new Response(Buffer.from(hit.data), {
+        return new Response(new Uint8Array(hit.data), {
           headers: {
             'Content-Type': hit.contentType,
             'Cache-Control': 'public, max-age=300',
@@ -313,8 +317,8 @@ export async function handleApiRequest(
       if (!png) {
         return jsonError(404, 'Radar frame unavailable for region/timestamp');
       }
-      cache.setBlob(key, png, 'image/png', mode === 'live' ? LIVE_RADAR_IMAGE_TTL_MS : null);
-      return new Response(Buffer.from(png), {
+      await cache.setBlob(key, png, 'image/png', mode === 'live' ? LIVE_RADAR_IMAGE_TTL_MS : null);
+      return new Response(new Uint8Array(png), {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'public, max-age=300',
