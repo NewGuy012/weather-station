@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { type GeoPermissibleObjects, geoContains } from 'd3-geo';
 import { getUsStateFeatures } from '../src/client/utils/mapGeometry';
-import { TOP_CITIES_BY_STATE } from '../src/shared/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
 import {
   type OpenMeteoLocationPayload,
@@ -10,9 +9,10 @@ import {
   computeTimelineStride,
   ensureUtcIso,
 } from '../src/server/providers/openMeteo';
-import { parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
+import { isValidPngBytes, parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
 import { buildHistoricalRadarFrames } from '../src/shared/radar';
 import { US_STATES } from '../src/shared/states';
+import { TOP_CITIES_BY_STATE } from '../src/shared/topCities';
 import { degToCompass, fToC, formatTemp } from '../src/shared/units';
 import { getWmoInfo } from '../src/shared/wmoCodes';
 
@@ -45,7 +45,7 @@ function makeLocationPayload(
   };
 }
 
-describe('50-State Registry & Seed Integrity', () => {
+describe('50-State & Top-10 City Registry', () => {
   test('contains 50 unique US states and 10 ranked cities inside each state boundary', () => {
     expect(US_STATES).toHaveLength(50);
     expect(new Set(US_STATES.map((s) => s.code)).size).toBe(50);
@@ -68,24 +68,20 @@ describe('50-State Registry & Seed Integrity', () => {
         expect(city.rank).toBe(i + 1);
         expect(city.population).toBeGreaterThan(0);
         if (i > 0) expect(city.population).toBeLessThanOrEqual(cities[i - 1]!.population);
-        expect(geoContains(feat as unknown as GeoPermissibleObjects, [city.lon, city.lat])).toBe(
-          true,
-        );
+        expect(geoContains(feat as unknown as GeoPermissibleObjects, [city.lon, city.lat])).toBe(true);
       }
     }
   });
 });
 
-describe('Open-Meteo Parsers & Helpers', () => {
-  test('normalizes UTC timestamps and chooses timeline stride', () => {
+describe('Providers & Shared Utilities', () => {
+  test('parses Open-Meteo historical and live current/hourly data accurately', () => {
     expect(ensureUtcIso('2026-11-15T12:00')).toBe('2026-11-15T12:00Z');
     expect(ensureUtcIso('2026-11-15T12:00Z')).toBe('2026-11-15T12:00Z');
     expect(computeTimelineStride(48)).toBe(1);
     expect(computeTimelineStride(96)).toBe(2);
     expect(computeTimelineStride(120)).toBe(3);
-  });
 
-  test('builds historical state batch dataset and aligns live current metrics to current hour', () => {
     const hist = buildBatchDataset(
       [makeLocationPayload(33.52, -86.81, [60, 62, 64]), makeLocationPayload(61.22, -149.9, [22, 21, 20])],
       [null, { hourly: { time: ['2026-11-15T00:00', '2026-11-15T01:00', '2026-11-15T02:00'], us_aqi: [18, 20, 19], uv_index: [0, 1, 0] } }],
@@ -97,7 +93,6 @@ describe('Open-Meteo Parsers & Helpers', () => {
     expect(hist.states.AK?.current.usAqi).toBe(20);
     expect(hist.states.AK?.timeline[2]?.weatherCode).toBe(71);
 
-    // Live mode must resolve hourly supplements (e.g. precipitationProb) at current.time, not midpoint
     const live = buildCityBatchDataset(
       [
         makeLocationPayload(34.05, -118.24, [72, 69, 65], {
@@ -122,10 +117,8 @@ describe('Open-Meteo Parsers & Helpers', () => {
     expect(live.cities[0]?.current.usAqi).toBe(44);
     expect(live.cities[0]?.current.precipitationProb).toBe(10);
   });
-});
 
-describe('NWS Alerts, Radar & Shared Formatters', () => {
-  test('groups NWS alerts by state UGC and sorts by severity', () => {
+  test('parses NWS alerts, NOAA radar capabilities, PNG headers, and units', () => {
     const parsed = parseNwsAlerts({
       features: [
         {
@@ -142,24 +135,19 @@ describe('NWS Alerts, Radar & Shared Formatters', () => {
         },
       ],
     });
-
     expect(parsed.totalActive).toBe(2);
     expect(parsed.byState.CA?.map((a) => a.event)).toEqual(['Tornado Warning', 'Wind Advisory']);
     expect(parsed.byState.OK).toHaveLength(1);
     expect(parsed.featuresGeoJson.features).toHaveLength(1);
-  });
 
-  test('parses NOAA WMS capabilities, builds historical radar frames, and formats units', () => {
-    const xml = `<Dimension name="time">2026-11-25T01:00:00Z,2026-11-25T01:15:00Z,2026-11-25T02:00:00Z</Dimension>`;
-    expect(parseNoaaCapabilitiesTimes(xml, 3)).toEqual([
-      '2026-11-25T01:00:00Z',
-      '2026-11-25T01:15:00Z',
-      '2026-11-25T02:00:00Z',
-    ]);
-
+    const xml = '<Dimension name="time">2026-11-25T01:00:00Z,2026-11-25T01:15:00Z</Dimension>';
+    expect(parseNoaaCapabilitiesTimes(xml, 2)).toEqual(['2026-11-25T01:00:00Z', '2026-11-25T01:15:00Z']);
     const hist = buildHistoricalRadarFrames('2024-01-14T18:00:00Z', 6);
     expect(hist.frames).toHaveLength(6);
     expect(hist.frames[5]?.timestamp).toBe('2024-01-14T18:00:00Z');
+
+    expect(isValidPngBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    expect(isValidPngBytes(new Uint8Array([0x3c, 0x68, 0x74, 0x6d, 0x6c, 0x3e, 0x00, 0x00]))).toBe(false);
 
     expect(Math.round(fToC(32))).toBe(0);
     expect(formatTemp(77, 'C', true)).toBe('25°C');

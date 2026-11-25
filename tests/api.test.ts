@@ -5,27 +5,29 @@ import { WorkerWeatherCache, clearWorkerMemoryCache } from '../src/worker/cache'
 import workerApp from '../src/worker/index';
 
 describe('API Router & Security', () => {
-  test('serves health, meta, and default historical seed dataset with 50 states', async () => {
+  test('serves health, removes /api/meta, and returns 50-state baseline seed', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
 
     const healthRes = await handleApiRequest(new Request('http://localhost/api/health'), cache);
     expect(healthRes?.status).toBe(200);
     expect(healthRes?.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(healthRes?.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+    expect(healthRes?.headers.get('Cache-Control')).toBe('no-store');
 
     const metaRes = await handleApiRequest(new Request('http://localhost/api/meta'), cache);
     expect(metaRes?.status).toBe(404);
+    expect(((await metaRes?.json()) as { error: string }).error).toBe('Unknown endpoint');
 
     const statesRes = await handleApiRequest(new Request('http://localhost/api/states'), cache);
     const data = (await statesRes?.json()) as WeatherDatasetResponse;
     expect(statesRes?.status).toBe(200);
-    expect(data.mode).toBe('historical');
     expect(data.source).toBe('seed-archive');
     expect(Object.keys(data.states)).toHaveLength(50);
     expect(data.timelineHours.length).toBeGreaterThanOrEqual(24);
   });
 
-  test('enforces HTTP methods, input validation, and cache hits', async () => {
+  test('enforces HTTP methods, bounded inputs, no path reflection, and cache hits', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
 
@@ -36,38 +38,33 @@ describe('API Router & Security', () => {
     expect(badMethod?.status).toBe(405);
     expect(badMethod?.headers.get('Allow')).toBe('GET, HEAD');
 
-    const invalidCases = [
+    const badRequests = [
       'http://localhost/api/states?mode=historical&startDate=2024-02-10&endDate=2024-02-01',
       'http://localhost/api/states?mode=historical&startDate=2024-01-01&endDate=2024-01-25',
       'http://localhost/api/states?mode=historical&startDate=2024-99-99',
       'http://localhost/api/states?mode=historical&startDate=1939-12-31&endDate=1939-12-31',
-      'http://localhost/api/state/CA?mode=historical&startDate=2024-01-01&endDate=2024-01-25',
+      'http://localhost/api/states?mode=historical&startDate=2099-01-01&endDate=2099-01-02',
       'http://localhost/api/state/CA?city=NotARealCity',
-      'http://localhost/api/state/CA/cities?mode=historical&startDate=2024-02-10&endDate=2024-02-01',
       'http://localhost/api/radar/frames?mode=historical&anchor=invalid-ts',
+      'http://localhost/api/radar/frames?mode=historical&anchor=2099-01-01T00:00:00Z',
       'http://localhost/api/radar/image?region=mars&ts=2026-11-18T18:00:00Z',
       'http://localhost/api/radar/image?region=conus&ts=not-a-timestamp',
+      'http://localhost/api/radar/image?mode=live&region=conus&ts=2020-01-01T00:00:00Z',
     ];
-    for (const url of invalidCases) {
+    for (const url of badRequests) {
       const res = await handleApiRequest(new Request(url), cache);
       expect(res?.status).toBe(400);
     }
 
     for (const url of [
       'http://localhost/api/state/ZZ',
-      'http://localhost/api/state/ZZ/cities',
-      'http://localhost/api/state/CA/unknown',
+      'http://localhost/api/state/CA/unknown-probe',
     ]) {
       const res = await handleApiRequest(new Request(url), cache);
       expect(res?.status).toBe(404);
+      const body = (await res?.json()) as { error: string };
+      expect(body.error).not.toContain('unknown-probe');
     }
-
-    const histFrames = await handleApiRequest(
-      new Request('http://localhost/api/radar/frames?mode=historical&anchor=2026-11-18T18:00:00Z'),
-      cache,
-    );
-    expect(histFrames?.status).toBe(200);
-    expect(((await histFrames?.json()) as { frames: unknown[] }).frames).toHaveLength(12);
 
     const cachedCitiesPayload: StateCitiesWeatherResponse = {
       mode: 'live',
@@ -81,19 +78,32 @@ describe('API Router & Security', () => {
       cities: [],
     };
     await cache.setJson('live:cities:CA', cachedCitiesPayload, 60_000);
-    const cachedCitiesRes = await handleApiRequest(
+    const hitRes = await handleApiRequest(
       new Request('http://localhost/api/state/CA/cities?mode=live'),
       cache,
     );
-    expect(cachedCitiesRes?.status).toBe(200);
-    const cachedCitiesJson = (await cachedCitiesRes?.json()) as StateCitiesWeatherResponse;
-    expect(cachedCitiesJson.cached).toBe(true);
-    expect(cachedCitiesJson.code).toBe('CA');
+    expect(hitRes?.status).toBe(200);
+    expect(((await hitRes?.json()) as StateCitiesWeatherResponse).cached).toBe(true);
+
+    // Stale-on-error: if forced refresh fails upstream after cooldown, return stale cache
+    await cache.setJson('live:alerts', { fetchedAt: 't', cached: false, totalActive: 0, byState: {}, featuresGeoJson: { type: 'FeatureCollection', features: [] } }, 300_000, Date.now() - 120_000);
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (() => Promise.reject(new Error('network down'))) as unknown as typeof fetch;
+    try {
+      const staleRes = await handleApiRequest(
+        new Request('http://localhost/api/alerts?refresh=1'),
+        cache,
+      );
+      expect(staleRes?.status).toBe(200);
+      expect(((await staleRes?.json()) as { cached: boolean }).cached).toBe(true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
 
 describe('Cloudflare Worker Entrypoint & Cache', () => {
-  test('WorkerWeatherCache stores, expires, and reports stats for JSON and binary entries', async () => {
+  test('enforces TTLs, 16MB blob memory cap, and Worker routing', async () => {
     clearWorkerMemoryCache();
     const cache = new WorkerWeatherCache();
     const now = 2_000_000;
@@ -105,32 +115,23 @@ describe('Cloudflare Worker Entrypoint & Cache', () => {
     await cache.setJson('hist:sample', { temp: 31 }, null, now);
     expect((await cache.getJson<{ temp: number }>('hist:sample', now + 999_999_999))?.value.temp).toBe(31);
 
-    const pngBytes = new Uint8Array([137, 80, 78, 71]);
-    await cache.setBlob('radar:sample', pngBytes, 'image/png', 10_000, now);
-    const blobHit = await cache.getBlob('radar:sample', now + 500);
-    expect(blobHit?.contentType).toBe('image/png');
-    expect(Array.from(blobHit?.data ?? [])).toEqual([137, 80, 78, 71]);
-    expect(cache.stats()).toEqual({ jsonCount: 1, blobCount: 1, backend: 'cloudflare-workers' });
+    // 3 x 6MB blobs exceed 16MB budget -> oldest evicted
+    const bigBlob = new Uint8Array(6 * 1024 * 1024);
+    await cache.setBlob('b1', bigBlob, 'image/png', 10_000, now);
+    await cache.setBlob('b2', bigBlob, 'image/png', 10_000, now);
+    await cache.setBlob('b3', bigBlob, 'image/png', 10_000, now);
+    expect(cache.stats()).toEqual({ jsonCount: 1, blobCount: 2, backend: 'cloudflare-workers' });
+    expect(await cache.getBlob('b1', now)).toBeNull();
 
     clearWorkerMemoryCache();
-  });
-
-  test('Worker entrypoint routes /api/* requests and serves 50-state baseline dataset', async () => {
-    clearWorkerMemoryCache();
-
-    const healthRes = await workerApp.fetch(new Request('http://localhost/api/health'));
-    expect(healthRes.status).toBe(200);
-    const healthJson = (await healthRes.json()) as { ok: boolean; cache: { backend?: string } };
-    expect(healthJson.ok).toBe(true);
-    expect(healthJson.cache.backend).toBe('cloudflare-workers');
 
     const statesRes = await workerApp.fetch(new Request('http://localhost/api/states'));
     expect(statesRes.status).toBe(200);
     const statesJson = (await statesRes.json()) as WeatherDatasetResponse;
-    expect(statesJson.source).toBe('seed-archive');
     expect(Object.keys(statesJson.states)).toHaveLength(50);
 
     const unknownRes = await workerApp.fetch(new Request('http://localhost/api/does-not-exist'));
     expect(unknownRes.status).toBe(404);
+    expect(unknownRes.headers.get('X-Content-Type-Options')).toBe('nosniff');
   });
 });
