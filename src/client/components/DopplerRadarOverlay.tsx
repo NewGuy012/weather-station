@@ -1,17 +1,9 @@
 import { useEffect, useRef } from 'react';
+import { RADAR_BBOX_4326, type RadarRegion } from '../../shared/radar';
 import type { RadarFrame, WeatherMode } from '../../shared/types';
-import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
+import { MAP_HEIGHT, MAP_WIDTH, getUsClipPath, usProjection } from '../utils/mapGeometry';
 
-export type RadarRegion = 'conus' | 'alaska' | 'hawaii';
-
-const RADAR_BOXES: Record<
-  RadarRegion,
-  { minLon: number; minLat: number; maxLon: number; maxLat: number; width: number; height: number }
-> = {
-  conus: { minLon: -126, minLat: 24, maxLon: -66, maxLat: 50, width: 900, height: 450 },
-  alaska: { minLon: -172, minLat: 50, maxLon: -129, maxLat: 72, width: 420, height: 240 },
-  hawaii: { minLon: -161, minLat: 18, maxLon: -154, maxLat: 23, width: 320, height: 220 },
-};
+export type { RadarRegion };
 
 // Work at 650x407 (~264k pixels) for <40ms one-time LUT build & <2ms frame reprojection
 const WORK_W = 650;
@@ -23,17 +15,6 @@ interface RadarLut {
 }
 
 let cachedLut: RadarLut | null = null;
-let cachedUsClipPath: Path2D | null = null;
-
-function getUsClipPath(): Path2D {
-  if (cachedUsClipPath) return cachedUsClipPath;
-  const combined = new Path2D();
-  for (const g of getUsStateGeometries()) {
-    combined.addPath(new Path2D(g.pathD));
-  }
-  cachedUsClipPath = combined;
-  return combined;
-}
 
 function getRadarLut(): RadarLut {
   if (cachedLut) return cachedLut;
@@ -57,39 +38,39 @@ function getRadarLut(): RadarLut {
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
 
       let regionCode = 0;
-      let box = RADAR_BOXES.conus;
+      let box = RADAR_BBOX_4326.conus;
 
       if (
-        lon >= RADAR_BOXES.conus.minLon &&
-        lon <= RADAR_BOXES.conus.maxLon &&
-        lat >= RADAR_BOXES.conus.minLat &&
-        lat <= RADAR_BOXES.conus.maxLat &&
+        lon >= RADAR_BBOX_4326.conus.minLon &&
+        lon <= RADAR_BBOX_4326.conus.maxLon &&
+        lat >= RADAR_BBOX_4326.conus.minLat &&
+        lat <= RADAR_BBOX_4326.conus.maxLat &&
         !(svgX < 245 && svgY > 385) &&
         !(svgX >= 240 && svgX <= 390 && svgY > 465)
       ) {
         regionCode = 1;
-        box = RADAR_BOXES.conus;
+        box = RADAR_BBOX_4326.conus;
       } else if (
-        lon >= RADAR_BOXES.alaska.minLon &&
-        lon <= RADAR_BOXES.alaska.maxLon &&
-        lat >= RADAR_BOXES.alaska.minLat &&
-        lat <= RADAR_BOXES.alaska.maxLat &&
+        lon >= RADAR_BBOX_4326.alaska.minLon &&
+        lon <= RADAR_BBOX_4326.alaska.maxLon &&
+        lat >= RADAR_BBOX_4326.alaska.minLat &&
+        lat <= RADAR_BBOX_4326.alaska.maxLat &&
         svgX < 245 &&
         svgY > 385
       ) {
         regionCode = 2;
-        box = RADAR_BOXES.alaska;
+        box = RADAR_BBOX_4326.alaska;
       } else if (
-        lon >= RADAR_BOXES.hawaii.minLon &&
-        lon <= RADAR_BOXES.hawaii.maxLon &&
-        lat >= RADAR_BOXES.hawaii.minLat &&
-        lat <= RADAR_BOXES.hawaii.maxLat &&
+        lon >= RADAR_BBOX_4326.hawaii.minLon &&
+        lon <= RADAR_BBOX_4326.hawaii.maxLon &&
+        lat >= RADAR_BBOX_4326.hawaii.minLat &&
+        lat <= RADAR_BBOX_4326.hawaii.maxLat &&
         svgX >= 240 &&
         svgX <= 390 &&
         svgY > 465
       ) {
         regionCode = 3;
-        box = RADAR_BOXES.hawaii;
+        box = RADAR_BBOX_4326.hawaii;
       }
 
       if (regionCode === 0) continue;
@@ -162,21 +143,21 @@ export function DopplerRadarOverlay({
       try {
         const conusPromise = loadImagePixels(
           `/api/radar/image?mode=${mode}&region=conus&ts=${encodeURIComponent(frame.timestamp)}`,
-          RADAR_BOXES.conus.width,
-          RADAR_BOXES.conus.height,
+          RADAR_BBOX_4326.conus.width,
+          RADAR_BBOX_4326.conus.height,
         );
         const akPromise = frame.hasAlaska
           ? loadImagePixels(
               `/api/radar/image?mode=${mode}&region=alaska&ts=${encodeURIComponent(frame.timestamp)}`,
-              RADAR_BOXES.alaska.width,
-              RADAR_BOXES.alaska.height,
+              RADAR_BBOX_4326.alaska.width,
+              RADAR_BBOX_4326.alaska.height,
             )
           : Promise.resolve(null);
         const hiPromise = frame.hasHawaii
           ? loadImagePixels(
               `/api/radar/image?mode=${mode}&region=hawaii&ts=${encodeURIComponent(frame.timestamp)}`,
-              RADAR_BOXES.hawaii.width,
-              RADAR_BOXES.hawaii.height,
+              RADAR_BBOX_4326.hawaii.width,
+              RADAR_BBOX_4326.hawaii.height,
             )
           : Promise.resolve(null);
 

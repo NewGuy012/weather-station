@@ -3,7 +3,7 @@ import { geoContains } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import usAtlasStates from 'us-atlas/states-10m.json';
-import { US_STATES } from '../src/server/data/states';
+import { US_STATES } from '../src/shared/states';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
 import {

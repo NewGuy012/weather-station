@@ -33,7 +33,13 @@ import {
   panByOffset,
   zoomViewState,
 } from '../utils/mapViewport';
-import { METRIC_SCALES, interpolateColor, isColorLight, resolveMetricStops } from '../utils/scales';
+import {
+  METRIC_SCALES,
+  interpolateColor,
+  isColorLight,
+  resolveMetricStops,
+  resolveStateSlice,
+} from '../utils/scales';
 import { HoverTooltip, PinnedStateTooltip } from './StateTooltip';
 import { WeatherIcon } from './WeatherIcon';
 import { geoPath } from 'd3-geo';
@@ -66,26 +72,6 @@ interface MapCanvasProps {
   overlays?: ReactNode;
   /** Exposed SVG ref for PNG export */
   mapContainerRef?: React.RefObject<HTMLDivElement | null>;
-}
-
-const COMPACT_NE_CODES = new Set(['RI', 'DE', 'CT', 'NJ', 'MD', 'MA', 'NH', 'VT']);
-
-export function resolveStateSlice(
-  snap: Pick<StateWeatherSnapshot, 'current' | 'timeline'>,
-  timelineIndex: number,
-  useTimeline: boolean,
-) {
-  const t = useTimeline ? snap.timeline[timelineIndex] : undefined;
-  return {
-    temperatureF: t?.temperatureF ?? snap.current.temperatureF,
-    apparentTemperatureF: t?.apparentTemperatureF ?? snap.current.apparentTemperatureF,
-    precipitationMm: t?.precipitationMm ?? snap.current.precipitationMm,
-    windSpeedMph: t?.windSpeedMph ?? snap.current.windSpeedMph,
-    windDirectionDeg: t?.windDirectionDeg ?? snap.current.windDirectionDeg,
-    humidity: t?.humidity ?? snap.current.humidity,
-    weatherCode: t?.weatherCode ?? snap.current.weatherCode,
-    metricSource: t,
-  };
 }
 
 export function MapCanvas({
@@ -690,7 +676,7 @@ export function MapCanvas({
             const displayVal = scaleConfig.formatMapValue(rawMetric, unit);
             const fill = interpolateColor(rawMetric, activeStops, isDark);
             const lightFill = isColorLight(fill);
-            const isCompact = COMPACT_NE_CODES.has(item.meta.code);
+            const isCompact = Boolean(item.meta.labelOffset);
             const hasAlerts = (alertsByState[item.meta.code]?.length ?? 0) > 0;
             const isSelected = selectedCode === item.meta.code;
 
@@ -699,7 +685,7 @@ export function MapCanvas({
 
             return (
               <g key={`label-${item.meta.code}`}>
-                {item.meta.leaderLine && (
+                {item.meta.labelOffset && (
                   <line
                     x1={cx}
                     y1={cy}

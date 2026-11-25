@@ -1,4 +1,4 @@
-import { STATE_BY_CODE } from '../data/states';
+import { STATE_BY_CODE } from '../../shared/states';
 import type { AlertsResponse, GeoJsonFeature, WeatherAlert } from '../../shared/types';
 
 const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual';

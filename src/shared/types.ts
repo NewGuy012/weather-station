@@ -34,8 +34,6 @@ export interface CityLocation {
   name: string;
   lat: number;
   lon: number;
-  isPrimary?: boolean;
-  population?: number;
 }
 
 export interface TopCityMeta {
@@ -55,10 +53,8 @@ export interface StateMeta {
   lon: number;
   primaryCity: string;
   cities: CityLocation[];
-  /** Optional SVG offset for dense Northeast labels */
+  /** Optional SVG offset for dense Northeast labels (also renders leader line & pill) */
   labelOffset?: [number, number];
-  /** Whether to draw a minimal leader line from centroid to offset label */
-  leaderLine?: boolean;
 }
 
 export interface StateCurrentMetrics {
@@ -137,7 +133,6 @@ export interface WeatherDatasetResponse {
   endDate: string;
   presetId?: string;
   presetLabel?: string;
-  alertsCount?: number;
   timelineHours: string[];
   states: Record<string, StateWeatherSnapshot>;
 }

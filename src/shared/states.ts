@@ -1,4 +1,4 @@
-import type { StateMeta } from '../../shared/types';
+import type { StateMeta } from './types';
 
 export const US_STATES: StateMeta[] = [
   {
@@ -10,7 +10,7 @@ export const US_STATES: StateMeta[] = [
     lon: -86.81,
     primaryCity: 'Birmingham',
     cities: [
-      { name: 'Birmingham', lat: 33.52, lon: -86.81, isPrimary: true },
+      { name: 'Birmingham', lat: 33.52, lon: -86.81 },
       { name: 'Montgomery', lat: 32.38, lon: -86.30 },
       { name: 'Mobile', lat: 30.69, lon: -88.04 },
       { name: 'Huntsville', lat: 34.73, lon: -86.59 },
@@ -25,7 +25,7 @@ export const US_STATES: StateMeta[] = [
     lon: -149.90,
     primaryCity: 'Anchorage',
     cities: [
-      { name: 'Anchorage', lat: 61.22, lon: -149.90, isPrimary: true },
+      { name: 'Anchorage', lat: 61.22, lon: -149.90 },
       { name: 'Fairbanks', lat: 64.84, lon: -147.72 },
       { name: 'Juneau', lat: 58.30, lon: -134.42 },
       { name: 'Utqiagvik', lat: 71.29, lon: -156.79 },
@@ -40,7 +40,7 @@ export const US_STATES: StateMeta[] = [
     lon: -112.07,
     primaryCity: 'Phoenix',
     cities: [
-      { name: 'Phoenix', lat: 33.45, lon: -112.07, isPrimary: true },
+      { name: 'Phoenix', lat: 33.45, lon: -112.07 },
       { name: 'Tucson', lat: 32.22, lon: -110.97 },
       { name: 'Flagstaff', lat: 35.20, lon: -111.65 },
       { name: 'Yuma', lat: 32.69, lon: -114.63 },
@@ -55,7 +55,7 @@ export const US_STATES: StateMeta[] = [
     lon: -92.29,
     primaryCity: 'Little Rock',
     cities: [
-      { name: 'Little Rock', lat: 34.75, lon: -92.29, isPrimary: true },
+      { name: 'Little Rock', lat: 34.75, lon: -92.29 },
       { name: 'Fayetteville', lat: 36.08, lon: -94.17 },
       { name: 'Fort Smith', lat: 35.39, lon: -94.40 },
     ],
@@ -69,7 +69,7 @@ export const US_STATES: StateMeta[] = [
     lon: -118.24,
     primaryCity: 'Los Angeles',
     cities: [
-      { name: 'Los Angeles', lat: 34.05, lon: -118.24, isPrimary: true },
+      { name: 'Los Angeles', lat: 34.05, lon: -118.24 },
       { name: 'San Francisco', lat: 37.77, lon: -122.42 },
       { name: 'Sacramento', lat: 38.58, lon: -121.49 },
       { name: 'San Diego', lat: 32.72, lon: -117.16 },
@@ -84,7 +84,7 @@ export const US_STATES: StateMeta[] = [
     lon: -104.99,
     primaryCity: 'Denver',
     cities: [
-      { name: 'Denver', lat: 39.74, lon: -104.99, isPrimary: true },
+      { name: 'Denver', lat: 39.74, lon: -104.99 },
       { name: 'Colorado Springs', lat: 38.83, lon: -104.82 },
       { name: 'Grand Junction', lat: 39.06, lon: -108.55 },
       { name: 'Aspen', lat: 39.19, lon: -106.82 },
@@ -99,12 +99,11 @@ export const US_STATES: StateMeta[] = [
     lon: -72.67,
     primaryCity: 'Hartford',
     cities: [
-      { name: 'Hartford', lat: 41.76, lon: -72.67, isPrimary: true },
+      { name: 'Hartford', lat: 41.76, lon: -72.67 },
       { name: 'New Haven', lat: 41.31, lon: -72.92 },
       { name: 'Bridgeport', lat: 41.18, lon: -73.19 },
     ],
     labelOffset: [22, 16],
-    leaderLine: true,
   },
   {
     code: 'DE',
@@ -115,12 +114,11 @@ export const US_STATES: StateMeta[] = [
     lon: -75.55,
     primaryCity: 'Wilmington',
     cities: [
-      { name: 'Wilmington', lat: 39.74, lon: -75.55, isPrimary: true },
+      { name: 'Wilmington', lat: 39.74, lon: -75.55 },
       { name: 'Dover', lat: 39.16, lon: -75.52 },
       { name: 'Rehoboth Beach', lat: 38.72, lon: -75.08 },
     ],
     labelOffset: [34, 8],
-    leaderLine: true,
   },
   {
     code: 'FL',
@@ -131,7 +129,7 @@ export const US_STATES: StateMeta[] = [
     lon: -80.19,
     primaryCity: 'Miami',
     cities: [
-      { name: 'Miami', lat: 25.76, lon: -80.19, isPrimary: true },
+      { name: 'Miami', lat: 25.76, lon: -80.19 },
       { name: 'Orlando', lat: 28.54, lon: -81.38 },
       { name: 'Tampa', lat: 27.95, lon: -82.46 },
       { name: 'Jacksonville', lat: 30.33, lon: -81.66 },
@@ -146,7 +144,7 @@ export const US_STATES: StateMeta[] = [
     lon: -84.39,
     primaryCity: 'Atlanta',
     cities: [
-      { name: 'Atlanta', lat: 33.75, lon: -84.39, isPrimary: true },
+      { name: 'Atlanta', lat: 33.75, lon: -84.39 },
       { name: 'Savannah', lat: 32.08, lon: -81.09 },
       { name: 'Augusta', lat: 33.47, lon: -82.01 },
     ],
@@ -160,7 +158,7 @@ export const US_STATES: StateMeta[] = [
     lon: -157.86,
     primaryCity: 'Honolulu',
     cities: [
-      { name: 'Honolulu', lat: 21.31, lon: -157.86, isPrimary: true },
+      { name: 'Honolulu', lat: 21.31, lon: -157.86 },
       { name: 'Hilo', lat: 19.72, lon: -155.09 },
       { name: 'Kahului', lat: 20.89, lon: -156.47 },
       { name: 'Lihue', lat: 21.98, lon: -159.37 },
@@ -175,7 +173,7 @@ export const US_STATES: StateMeta[] = [
     lon: -116.20,
     primaryCity: 'Boise',
     cities: [
-      { name: 'Boise', lat: 43.62, lon: -116.20, isPrimary: true },
+      { name: 'Boise', lat: 43.62, lon: -116.20 },
       { name: 'Idaho Falls', lat: 43.49, lon: -112.03 },
       { name: 'Coeur d\'Alene', lat: 47.68, lon: -116.78 },
     ],
@@ -189,7 +187,7 @@ export const US_STATES: StateMeta[] = [
     lon: -87.63,
     primaryCity: 'Chicago',
     cities: [
-      { name: 'Chicago', lat: 41.88, lon: -87.63, isPrimary: true },
+      { name: 'Chicago', lat: 41.88, lon: -87.63 },
       { name: 'Springfield', lat: 39.78, lon: -89.65 },
       { name: 'Peoria', lat: 40.69, lon: -89.59 },
     ],
@@ -203,7 +201,7 @@ export const US_STATES: StateMeta[] = [
     lon: -86.16,
     primaryCity: 'Indianapolis',
     cities: [
-      { name: 'Indianapolis', lat: 39.77, lon: -86.16, isPrimary: true },
+      { name: 'Indianapolis', lat: 39.77, lon: -86.16 },
       { name: 'Fort Wayne', lat: 41.08, lon: -85.14 },
       { name: 'Evansville', lat: 37.97, lon: -87.57 },
     ],
@@ -217,7 +215,7 @@ export const US_STATES: StateMeta[] = [
     lon: -93.62,
     primaryCity: 'Des Moines',
     cities: [
-      { name: 'Des Moines', lat: 41.59, lon: -93.62, isPrimary: true },
+      { name: 'Des Moines', lat: 41.59, lon: -93.62 },
       { name: 'Cedar Rapids', lat: 41.98, lon: -91.67 },
       { name: 'Sioux City', lat: 42.50, lon: -96.40 },
     ],
@@ -231,7 +229,7 @@ export const US_STATES: StateMeta[] = [
     lon: -97.34,
     primaryCity: 'Wichita',
     cities: [
-      { name: 'Wichita', lat: 37.69, lon: -97.34, isPrimary: true },
+      { name: 'Wichita', lat: 37.69, lon: -97.34 },
       { name: 'Topeka', lat: 39.05, lon: -95.68 },
       { name: 'Dodge City', lat: 37.75, lon: -100.02 },
     ],
@@ -245,7 +243,7 @@ export const US_STATES: StateMeta[] = [
     lon: -85.76,
     primaryCity: 'Louisville',
     cities: [
-      { name: 'Louisville', lat: 38.25, lon: -85.76, isPrimary: true },
+      { name: 'Louisville', lat: 38.25, lon: -85.76 },
       { name: 'Lexington', lat: 38.04, lon: -84.50 },
       { name: 'Bowling Green', lat: 36.97, lon: -86.48 },
     ],
@@ -259,7 +257,7 @@ export const US_STATES: StateMeta[] = [
     lon: -90.07,
     primaryCity: 'New Orleans',
     cities: [
-      { name: 'New Orleans', lat: 29.95, lon: -90.07, isPrimary: true },
+      { name: 'New Orleans', lat: 29.95, lon: -90.07 },
       { name: 'Baton Rouge', lat: 30.45, lon: -91.19 },
       { name: 'Shreveport', lat: 32.53, lon: -93.75 },
     ],
@@ -273,7 +271,7 @@ export const US_STATES: StateMeta[] = [
     lon: -70.26,
     primaryCity: 'Portland',
     cities: [
-      { name: 'Portland', lat: 43.66, lon: -70.26, isPrimary: true },
+      { name: 'Portland', lat: 43.66, lon: -70.26 },
       { name: 'Bangor', lat: 44.80, lon: -68.77 },
       { name: 'Caribou', lat: 46.86, lon: -68.01 },
     ],
@@ -287,12 +285,11 @@ export const US_STATES: StateMeta[] = [
     lon: -76.61,
     primaryCity: 'Baltimore',
     cities: [
-      { name: 'Baltimore', lat: 39.29, lon: -76.61, isPrimary: true },
+      { name: 'Baltimore', lat: 39.29, lon: -76.61 },
       { name: 'Annapolis', lat: 38.98, lon: -76.49 },
       { name: 'Ocean City', lat: 38.34, lon: -75.08 },
     ],
     labelOffset: [26, 24],
-    leaderLine: true,
   },
   {
     code: 'MA',
@@ -303,12 +300,11 @@ export const US_STATES: StateMeta[] = [
     lon: -71.06,
     primaryCity: 'Boston',
     cities: [
-      { name: 'Boston', lat: 42.36, lon: -71.06, isPrimary: true },
+      { name: 'Boston', lat: 42.36, lon: -71.06 },
       { name: 'Worcester', lat: 42.26, lon: -71.80 },
       { name: 'Springfield', lat: 42.10, lon: -72.59 },
     ],
     labelOffset: [34, -8],
-    leaderLine: true,
   },
   {
     code: 'MI',
@@ -319,7 +315,7 @@ export const US_STATES: StateMeta[] = [
     lon: -83.05,
     primaryCity: 'Detroit',
     cities: [
-      { name: 'Detroit', lat: 42.33, lon: -83.05, isPrimary: true },
+      { name: 'Detroit', lat: 42.33, lon: -83.05 },
       { name: 'Grand Rapids', lat: 42.96, lon: -85.67 },
       { name: 'Marquette', lat: 46.54, lon: -87.40 },
     ],
@@ -333,7 +329,7 @@ export const US_STATES: StateMeta[] = [
     lon: -93.27,
     primaryCity: 'Minneapolis',
     cities: [
-      { name: 'Minneapolis', lat: 44.98, lon: -93.27, isPrimary: true },
+      { name: 'Minneapolis', lat: 44.98, lon: -93.27 },
       { name: 'Duluth', lat: 46.79, lon: -92.10 },
       { name: 'Rochester', lat: 44.01, lon: -92.48 },
     ],
@@ -347,7 +343,7 @@ export const US_STATES: StateMeta[] = [
     lon: -90.18,
     primaryCity: 'Jackson',
     cities: [
-      { name: 'Jackson', lat: 32.30, lon: -90.18, isPrimary: true },
+      { name: 'Jackson', lat: 32.30, lon: -90.18 },
       { name: 'Biloxi', lat: 30.40, lon: -88.89 },
       { name: 'Tupelo', lat: 34.26, lon: -88.70 },
     ],
@@ -361,7 +357,7 @@ export const US_STATES: StateMeta[] = [
     lon: -94.58,
     primaryCity: 'Kansas City',
     cities: [
-      { name: 'Kansas City', lat: 39.10, lon: -94.58, isPrimary: true },
+      { name: 'Kansas City', lat: 39.10, lon: -94.58 },
       { name: 'St. Louis', lat: 38.63, lon: -90.20 },
       { name: 'Springfield', lat: 37.21, lon: -93.29 },
     ],
@@ -375,7 +371,7 @@ export const US_STATES: StateMeta[] = [
     lon: -108.50,
     primaryCity: 'Billings',
     cities: [
-      { name: 'Billings', lat: 45.78, lon: -108.50, isPrimary: true },
+      { name: 'Billings', lat: 45.78, lon: -108.50 },
       { name: 'Missoula', lat: 46.87, lon: -114.00 },
       { name: 'Great Falls', lat: 47.50, lon: -111.30 },
     ],
@@ -389,7 +385,7 @@ export const US_STATES: StateMeta[] = [
     lon: -95.93,
     primaryCity: 'Omaha',
     cities: [
-      { name: 'Omaha', lat: 41.26, lon: -95.93, isPrimary: true },
+      { name: 'Omaha', lat: 41.26, lon: -95.93 },
       { name: 'Lincoln', lat: 40.81, lon: -96.70 },
       { name: 'North Platte', lat: 41.12, lon: -100.77 },
     ],
@@ -403,7 +399,7 @@ export const US_STATES: StateMeta[] = [
     lon: -115.14,
     primaryCity: 'Las Vegas',
     cities: [
-      { name: 'Las Vegas', lat: 36.17, lon: -115.14, isPrimary: true },
+      { name: 'Las Vegas', lat: 36.17, lon: -115.14 },
       { name: 'Reno', lat: 39.53, lon: -119.81 },
       { name: 'Elko', lat: 40.83, lon: -115.76 },
     ],
@@ -417,12 +413,11 @@ export const US_STATES: StateMeta[] = [
     lon: -71.54,
     primaryCity: 'Concord',
     cities: [
-      { name: 'Concord', lat: 43.21, lon: -71.54, isPrimary: true },
+      { name: 'Concord', lat: 43.21, lon: -71.54 },
       { name: 'Manchester', lat: 42.99, lon: -71.46 },
       { name: 'Mount Washington', lat: 44.27, lon: -71.30 },
     ],
     labelOffset: [22, -24],
-    leaderLine: true,
   },
   {
     code: 'NJ',
@@ -433,12 +428,11 @@ export const US_STATES: StateMeta[] = [
     lon: -74.17,
     primaryCity: 'Newark',
     cities: [
-      { name: 'Newark', lat: 40.74, lon: -74.17, isPrimary: true },
+      { name: 'Newark', lat: 40.74, lon: -74.17 },
       { name: 'Trenton', lat: 40.22, lon: -74.74 },
       { name: 'Atlantic City', lat: 39.36, lon: -74.42 },
     ],
     labelOffset: [26, 2],
-    leaderLine: true,
   },
   {
     code: 'NM',
@@ -449,7 +443,7 @@ export const US_STATES: StateMeta[] = [
     lon: -106.65,
     primaryCity: 'Albuquerque',
     cities: [
-      { name: 'Albuquerque', lat: 35.08, lon: -106.65, isPrimary: true },
+      { name: 'Albuquerque', lat: 35.08, lon: -106.65 },
       { name: 'Santa Fe', lat: 35.69, lon: -105.94 },
       { name: 'Las Cruces', lat: 32.32, lon: -106.76 },
     ],
@@ -463,7 +457,7 @@ export const US_STATES: StateMeta[] = [
     lon: -74.01,
     primaryCity: 'New York',
     cities: [
-      { name: 'New York', lat: 40.71, lon: -74.01, isPrimary: true },
+      { name: 'New York', lat: 40.71, lon: -74.01 },
       { name: 'Buffalo', lat: 42.89, lon: -78.88 },
       { name: 'Albany', lat: 42.65, lon: -73.76 },
       { name: 'Syracuse', lat: 43.05, lon: -76.15 },
@@ -478,7 +472,7 @@ export const US_STATES: StateMeta[] = [
     lon: -80.84,
     primaryCity: 'Charlotte',
     cities: [
-      { name: 'Charlotte', lat: 35.23, lon: -80.84, isPrimary: true },
+      { name: 'Charlotte', lat: 35.23, lon: -80.84 },
       { name: 'Raleigh', lat: 35.78, lon: -78.64 },
       { name: 'Asheville', lat: 35.60, lon: -82.55 },
       { name: 'Wilmington', lat: 34.21, lon: -77.89 },
@@ -493,7 +487,7 @@ export const US_STATES: StateMeta[] = [
     lon: -96.79,
     primaryCity: 'Fargo',
     cities: [
-      { name: 'Fargo', lat: 46.88, lon: -96.79, isPrimary: true },
+      { name: 'Fargo', lat: 46.88, lon: -96.79 },
       { name: 'Bismarck', lat: 46.81, lon: -100.78 },
       { name: 'Minot', lat: 48.23, lon: -101.30 },
     ],
@@ -507,7 +501,7 @@ export const US_STATES: StateMeta[] = [
     lon: -83.00,
     primaryCity: 'Columbus',
     cities: [
-      { name: 'Columbus', lat: 39.96, lon: -83.00, isPrimary: true },
+      { name: 'Columbus', lat: 39.96, lon: -83.00 },
       { name: 'Cleveland', lat: 41.50, lon: -81.69 },
       { name: 'Cincinnati', lat: 39.10, lon: -84.51 },
     ],
@@ -521,7 +515,7 @@ export const US_STATES: StateMeta[] = [
     lon: -97.52,
     primaryCity: 'Oklahoma City',
     cities: [
-      { name: 'Oklahoma City', lat: 35.47, lon: -97.52, isPrimary: true },
+      { name: 'Oklahoma City', lat: 35.47, lon: -97.52 },
       { name: 'Tulsa', lat: 36.15, lon: -95.99 },
       { name: 'Lawton', lat: 34.60, lon: -98.39 },
     ],
@@ -535,7 +529,7 @@ export const US_STATES: StateMeta[] = [
     lon: -122.68,
     primaryCity: 'Portland',
     cities: [
-      { name: 'Portland', lat: 45.52, lon: -122.68, isPrimary: true },
+      { name: 'Portland', lat: 45.52, lon: -122.68 },
       { name: 'Eugene', lat: 44.05, lon: -123.09 },
       { name: 'Bend', lat: 44.06, lon: -121.32 },
     ],
@@ -549,7 +543,7 @@ export const US_STATES: StateMeta[] = [
     lon: -75.17,
     primaryCity: 'Philadelphia',
     cities: [
-      { name: 'Philadelphia', lat: 39.95, lon: -75.17, isPrimary: true },
+      { name: 'Philadelphia', lat: 39.95, lon: -75.17 },
       { name: 'Pittsburgh', lat: 40.44, lon: -80.00 },
       { name: 'Harrisburg', lat: 40.27, lon: -76.89 },
     ],
@@ -563,11 +557,10 @@ export const US_STATES: StateMeta[] = [
     lon: -71.41,
     primaryCity: 'Providence',
     cities: [
-      { name: 'Providence', lat: 41.82, lon: -71.41, isPrimary: true },
+      { name: 'Providence', lat: 41.82, lon: -71.41 },
       { name: 'Newport', lat: 41.49, lon: -71.31 },
     ],
     labelOffset: [42, 4],
-    leaderLine: true,
   },
   {
     code: 'SC',
@@ -578,7 +571,7 @@ export const US_STATES: StateMeta[] = [
     lon: -79.93,
     primaryCity: 'Charleston',
     cities: [
-      { name: 'Charleston', lat: 32.78, lon: -79.93, isPrimary: true },
+      { name: 'Charleston', lat: 32.78, lon: -79.93 },
       { name: 'Columbia', lat: 34.00, lon: -81.03 },
       { name: 'Greenville', lat: 34.85, lon: -82.39 },
     ],
@@ -592,7 +585,7 @@ export const US_STATES: StateMeta[] = [
     lon: -96.73,
     primaryCity: 'Sioux Falls',
     cities: [
-      { name: 'Sioux Falls', lat: 43.55, lon: -96.73, isPrimary: true },
+      { name: 'Sioux Falls', lat: 43.55, lon: -96.73 },
       { name: 'Rapid City', lat: 44.08, lon: -103.23 },
       { name: 'Pierre', lat: 44.37, lon: -100.35 },
     ],
@@ -606,7 +599,7 @@ export const US_STATES: StateMeta[] = [
     lon: -86.78,
     primaryCity: 'Nashville',
     cities: [
-      { name: 'Nashville', lat: 36.16, lon: -86.78, isPrimary: true },
+      { name: 'Nashville', lat: 36.16, lon: -86.78 },
       { name: 'Memphis', lat: 35.15, lon: -90.05 },
       { name: 'Knoxville', lat: 35.96, lon: -83.92 },
     ],
@@ -620,7 +613,7 @@ export const US_STATES: StateMeta[] = [
     lon: -97.74,
     primaryCity: 'Austin',
     cities: [
-      { name: 'Austin', lat: 30.27, lon: -97.74, isPrimary: true },
+      { name: 'Austin', lat: 30.27, lon: -97.74 },
       { name: 'Houston', lat: 29.76, lon: -95.37 },
       { name: 'Dallas', lat: 32.78, lon: -96.80 },
       { name: 'El Paso', lat: 31.76, lon: -106.49 },
@@ -635,7 +628,7 @@ export const US_STATES: StateMeta[] = [
     lon: -111.89,
     primaryCity: 'Salt Lake City',
     cities: [
-      { name: 'Salt Lake City', lat: 40.76, lon: -111.89, isPrimary: true },
+      { name: 'Salt Lake City', lat: 40.76, lon: -111.89 },
       { name: 'St. George', lat: 37.10, lon: -113.57 },
       { name: 'Moab', lat: 38.57, lon: -109.55 },
     ],
@@ -649,12 +642,11 @@ export const US_STATES: StateMeta[] = [
     lon: -73.21,
     primaryCity: 'Burlington',
     cities: [
-      { name: 'Burlington', lat: 44.48, lon: -73.21, isPrimary: true },
+      { name: 'Burlington', lat: 44.48, lon: -73.21 },
       { name: 'Montpelier', lat: 44.26, lon: -72.58 },
       { name: 'Rutland', lat: 43.61, lon: -72.97 },
     ],
     labelOffset: [-12, -26],
-    leaderLine: true,
   },
   {
     code: 'VA',
@@ -665,7 +657,7 @@ export const US_STATES: StateMeta[] = [
     lon: -77.44,
     primaryCity: 'Richmond',
     cities: [
-      { name: 'Richmond', lat: 37.54, lon: -77.44, isPrimary: true },
+      { name: 'Richmond', lat: 37.54, lon: -77.44 },
       { name: 'Virginia Beach', lat: 36.85, lon: -75.98 },
       { name: 'Roanoke', lat: 37.27, lon: -79.94 },
     ],
@@ -679,7 +671,7 @@ export const US_STATES: StateMeta[] = [
     lon: -122.33,
     primaryCity: 'Seattle',
     cities: [
-      { name: 'Seattle', lat: 47.61, lon: -122.33, isPrimary: true },
+      { name: 'Seattle', lat: 47.61, lon: -122.33 },
       { name: 'Spokane', lat: 47.66, lon: -117.43 },
       { name: 'Yakima', lat: 46.60, lon: -120.51 },
     ],
@@ -693,7 +685,7 @@ export const US_STATES: StateMeta[] = [
     lon: -81.63,
     primaryCity: 'Charleston',
     cities: [
-      { name: 'Charleston', lat: 38.35, lon: -81.63, isPrimary: true },
+      { name: 'Charleston', lat: 38.35, lon: -81.63 },
       { name: 'Morgantown', lat: 39.63, lon: -79.96 },
       { name: 'Huntington', lat: 38.42, lon: -82.45 },
     ],
@@ -707,7 +699,7 @@ export const US_STATES: StateMeta[] = [
     lon: -87.91,
     primaryCity: 'Milwaukee',
     cities: [
-      { name: 'Milwaukee', lat: 43.04, lon: -87.91, isPrimary: true },
+      { name: 'Milwaukee', lat: 43.04, lon: -87.91 },
       { name: 'Madison', lat: 43.07, lon: -89.40 },
       { name: 'Green Bay', lat: 44.51, lon: -88.02 },
     ],
@@ -721,7 +713,7 @@ export const US_STATES: StateMeta[] = [
     lon: -104.82,
     primaryCity: 'Cheyenne',
     cities: [
-      { name: 'Cheyenne', lat: 41.14, lon: -104.82, isPrimary: true },
+      { name: 'Cheyenne', lat: 41.14, lon: -104.82 },
       { name: 'Casper', lat: 42.87, lon: -106.31 },
       { name: 'Jackson', lat: 43.48, lon: -110.76 },
     ],

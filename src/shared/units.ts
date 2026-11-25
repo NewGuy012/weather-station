@@ -4,25 +4,31 @@ export function fToC(tempF: number): number {
   return ((tempF - 32) * 5) / 9;
 }
 
+export function convertTemp(tempF: number, unit: TempUnit): number {
+  return Math.round(unit === 'C' ? fToC(tempF) : tempF);
+}
+
 export function formatTemp(tempF: number, unit: TempUnit, includeUnit = false): string {
-  const val = unit === 'C' ? fToC(tempF) : tempF;
-  const rounded = Math.round(val);
+  const rounded = convertTemp(tempF, unit);
   return includeUnit ? `${rounded}°${unit}` : `${rounded}°`;
 }
 
-export function formatWind(mph: number, unit: TempUnit): string {
-  if (unit === 'C') {
-    return `${Math.round(mph * 1.60934)} km/h`;
-  }
-  return `${Math.round(mph)} mph`;
+export function convertWind(mph: number, unit: TempUnit): number {
+  return Math.round(unit === 'C' ? mph * 1.60934 : mph);
 }
 
-export function formatPrecip(mm: number, unit: TempUnit): string {
-  if (unit === 'C') {
-    return `${mm.toFixed(1)} mm`;
-  }
-  const inches = mm / 25.4;
-  return `${inches.toFixed(2)} in`;
+export function formatWind(mph: number, unit: TempUnit, includeUnit = true): string {
+  const val = convertWind(mph, unit);
+  return includeUnit ? `${val} ${unit === 'C' ? 'km/h' : 'mph'}` : `${val}`;
+}
+
+export function formatPrecipValue(mm: number, unit: TempUnit): string {
+  return unit === 'C' ? mm.toFixed(1) : (mm / 25.4).toFixed(2);
+}
+
+export function formatPrecip(mm: number, unit: TempUnit, includeUnit = true): string {
+  const val = formatPrecipValue(mm, unit);
+  return includeUnit ? `${val} ${unit === 'C' ? 'mm' : 'in'}` : val;
 }
 
 export function degToCompass(deg: number): string {

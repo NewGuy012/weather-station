@@ -34,9 +34,8 @@ import {
   uvCategory,
 } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
-import { METRIC_SCALES } from '../utils/scales';
+import { METRIC_SCALES, resolveStateSlice } from '../utils/scales';
 import { HourlyChart } from './HourlyChart';
-import { resolveStateSlice } from './MapCanvas';
 import { WeatherIcon } from './WeatherIcon';
 
 interface StateDrawerProps {

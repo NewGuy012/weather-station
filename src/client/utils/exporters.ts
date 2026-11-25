@@ -1,7 +1,14 @@
 import type { StateDetailResponse, TempUnit, WeatherDatasetResponse } from '../../shared/types';
-import { degToCompass, fToC, formatPrecip, formatWind } from '../../shared/units';
+import {
+  convertTemp,
+  convertWind,
+  degToCompass,
+  formatPrecip,
+  formatPrecipValue,
+  formatWind,
+} from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
-import { resolveStateSlice } from '../components/MapCanvas';
+import { resolveStateSlice } from './scales';
 
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return '';
@@ -10,10 +17,6 @@ function escapeCsv(val: string | number | null | undefined): string {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
-}
-
-function roundTemp(tempF: number, unit: TempUnit): number {
-  return Math.round(unit === 'C' ? fToC(tempF) : tempF);
 }
 
 export function buildStatesCsv(
@@ -46,19 +49,17 @@ export function buildStatesCsv(
       const slice = resolveStateSlice(snap, timelineIndex, useTimeline);
       const wmo = getWmoInfo(slice.weatherCode);
       const ts = useTimeline ? dataset.timelineHours[timelineIndex] ?? dataset.fetchedAt : dataset.fetchedAt;
-      const windNum =
-        unit === 'C' ? Math.round(slice.windSpeedMph * 1.60934) : Math.round(slice.windSpeedMph);
-      const precipVal =
-        unit === 'C' ? slice.precipitationMm.toFixed(1) : (slice.precipitationMm / 25.4).toFixed(2);
+      const windNum = convertWind(slice.windSpeedMph, unit);
+      const precipVal = formatPrecipValue(slice.precipitationMm, unit);
 
       return [
         snap.code,
         snap.name,
         snap.city,
-        roundTemp(slice.temperatureF, unit),
-        roundTemp(slice.apparentTemperatureF, unit),
-        roundTemp(snap.current.tempHighF, unit),
-        roundTemp(snap.current.tempLowF, unit),
+        convertTemp(slice.temperatureF, unit),
+        convertTemp(slice.apparentTemperatureF, unit),
+        convertTemp(snap.current.tempHighF, unit),
+        convertTemp(snap.current.tempLowF, unit),
         wmo.label,
         windNum,
         degToCompass(slice.windDirectionDeg),
@@ -96,9 +97,9 @@ export function buildStateDetailCsv(detail: StateDetailResponse, unit: TempUnit)
       detail.code,
       detail.city,
       h.time,
-      roundTemp(h.temperatureF, unit),
-      roundTemp(h.apparentTemperatureF, unit),
-      roundTemp(h.dewPointF, unit),
+      convertTemp(h.temperatureF, unit),
+      convertTemp(h.apparentTemperatureF, unit),
+      convertTemp(h.dewPointF, unit),
       getWmoInfo(h.weatherCode).label,
       Math.round(h.humidity),
       formatWind(h.windSpeedMph, unit),

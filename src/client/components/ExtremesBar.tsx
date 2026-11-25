@@ -2,7 +2,7 @@ import { Flame, Snowflake, Wind } from 'lucide-react';
 import { useMemo } from 'react';
 import type { StateWeatherSnapshot, TempUnit } from '../../shared/types';
 import { formatTemp, formatWind } from '../../shared/units';
-import { resolveStateSlice } from './MapCanvas';
+import { resolveStateSlice } from '../utils/scales';
 
 interface ExtremesBarProps {
   states: Record<string, StateWeatherSnapshot>;

@@ -1,4 +1,4 @@
-import { US_STATES, STATE_BY_CODE } from '../data/states';
+import { STATE_BY_CODE, US_STATES } from '../../shared/states';
 import { TOP_CITIES_BY_STATE } from '../data/topCities';
 import type {
   CityWeatherSnapshot,

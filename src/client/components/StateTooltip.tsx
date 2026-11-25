@@ -77,8 +77,7 @@ export function HoverTooltip({
         <div className="flex items-center gap-1">
           <Wind size={11} />
           <span className="tabular-nums">
-            {formatWind(data.windMph, unit).replace(' mph', '').replace(' km/h', '')}{' '}
-            {degToCompass(data.windDeg)}
+            {formatWind(data.windMph, unit, false)} {degToCompass(data.windDeg)}
           </span>
         </div>
         <div className="flex items-center gap-1">

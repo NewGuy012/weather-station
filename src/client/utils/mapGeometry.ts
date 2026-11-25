@@ -2,7 +2,7 @@ import { geoAlbersUsa, geoPath } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import usAtlasStates from 'us-atlas/states-10m.json';
-import { STATE_BY_FIPS, US_STATES } from '../../server/data/states';
+import { STATE_BY_FIPS, US_STATES } from '../../shared/states';
 import type { StateMeta } from '../../shared/types';
 
 export const MAP_WIDTH = 975;
@@ -20,20 +20,17 @@ export interface StateGeometryItem {
 }
 
 let cachedGeometries: StateGeometryItem[] | null = null;
-let cachedNationOutlinePath: string | null = null;
+let cachedUsClipPath: Path2D | null = null;
 
 function buildGeometries(): void {
   if (cachedGeometries) return;
 
   const topology = usAtlasStates as unknown as Topology<{
     states: GeometryCollection<{ name: string }>;
-    nation: GeometryCollection<Record<string, never>>;
   }>;
 
   const pathGen = geoPath(usProjection);
   const statesGeo = feature(topology, topology.objects.states);
-  const nationGeo = feature(topology, topology.objects.nation);
-  cachedNationOutlinePath = pathGen(nationGeo) ?? '';
 
   const items: StateGeometryItem[] = [];
   for (const geoFeature of statesGeo.features) {
@@ -112,7 +109,12 @@ export function getUsStateGeometries(): StateGeometryItem[] {
   return cachedGeometries!;
 }
 
-export function getUsNationOutlinePath(): string {
-  buildGeometries();
-  return cachedNationOutlinePath!;
+export function getUsClipPath(): Path2D {
+  if (cachedUsClipPath) return cachedUsClipPath;
+  const combined = new Path2D();
+  for (const g of getUsStateGeometries()) {
+    combined.addPath(new Path2D(g.pathD));
+  }
+  cachedUsClipPath = combined;
+  return combined;
 }

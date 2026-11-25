@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
+import { STATE_BY_CODE, US_STATES } from '../shared/states';
 import type {
   AlertsResponse,
   ColormapId,
@@ -8,7 +9,6 @@ import type {
   RadarFramesResponse,
   StateCitiesWeatherResponse,
   StateDetailResponse,
-  StateMeta,
   TempUnit,
   ThemeMode,
   TopCityMeta,
@@ -61,7 +61,6 @@ export function App() {
   );
 
   const [dataset, setDataset] = useState<WeatherDatasetResponse | null>(null);
-  const [statesMeta, setStatesMeta] = useState<StateMeta[]>([]);
   const [topCitiesByState, setTopCitiesByState] = useState<Record<string, TopCityMeta[]>>({});
   const [alertsData, setAlertsData] = useState<AlertsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -101,10 +100,7 @@ export function App() {
   const [exportScope, setExportScope] = useState<'national' | 'state'>('national');
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedMeta = useMemo(
-    () => (selectedCode ? statesMeta.find((s) => s.code === selectedCode) ?? null : null),
-    [selectedCode, statesMeta],
-  );
+  const selectedMeta = selectedCode ? STATE_BY_CODE[selectedCode] ?? null : null;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -144,8 +140,7 @@ export function App() {
   useEffect(() => {
     fetch('/api/meta')
       .then((r) => r.json())
-      .then((data: { states: StateMeta[]; topCitiesByState?: Record<string, TopCityMeta[]> }) => {
-        setStatesMeta(data.states);
+      .then((data: { topCitiesByState?: Record<string, TopCityMeta[]> }) => {
         if (data.topCitiesByState) {
           setTopCitiesByState(data.topCitiesByState);
         }
@@ -270,19 +265,15 @@ export function App() {
     return () => window.clearInterval(id);
   }, [showRadar, isRadarPlaying, radarFrames.length]);
 
-  const handleSelectState = useCallback(
-    (code: string | null) => {
-      setSelectedCode(code);
-      if (!code) {
-        setStateDetail(null);
-        setSelectedCity('');
-        return;
-      }
-      const meta = statesMeta.find((s) => s.code === code);
-      setSelectedCity(meta?.primaryCity ?? '');
-    },
-    [statesMeta],
-  );
+  const handleSelectState = useCallback((code: string | null) => {
+    setSelectedCode(code);
+    if (!code) {
+      setStateDetail(null);
+      setSelectedCity('');
+      return;
+    }
+    setSelectedCity(STATE_BY_CODE[code]?.primaryCity ?? '');
+  }, []);
 
   useEffect(() => {
     if (!selectedCode) return;
@@ -438,7 +429,7 @@ export function App() {
         activePresetId={activePresetId}
         onSelectPreset={handleSelectPreset}
         onSelectCustomDates={handleCustomDates}
-        statesMeta={statesMeta}
+        statesMeta={US_STATES}
         onSelectState={(code) => handleSelectState(code)}
         onRefresh={() => {
           setCitiesRefreshCount((c) => c + 1);

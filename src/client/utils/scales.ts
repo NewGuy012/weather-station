@@ -2,10 +2,11 @@ import type {
   ColormapId,
   MetricLayer,
   StateCurrentMetrics,
+  StateWeatherSnapshot,
   TempUnit,
   TimelinePoint,
 } from '../../shared/types';
-import { fToC } from '../../shared/units';
+import { convertWind, formatPrecipValue, formatTemp } from '../../shared/units';
 
 export interface ColorStop {
   value: number;
@@ -88,7 +89,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     shortLabel: 'Temp',
     unitLabel: (u) => `°${u}`,
     stops: TEMP_STOPS,
-    formatMapValue: (v, u) => (v === null ? '—' : `${Math.round(u === 'C' ? fToC(v) : v)}°`),
+    formatMapValue: (v, u) => (v === null ? '—' : formatTemp(v, u)),
     extractCurrent: (m) => m.temperatureF,
     extractTimeline: (t) => t.temperatureF,
   },
@@ -98,7 +99,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     shortLabel: 'Feels',
     unitLabel: (u) => `°${u}`,
     stops: TEMP_STOPS,
-    formatMapValue: (v, u) => (v === null ? '—' : `${Math.round(u === 'C' ? fToC(v) : v)}°`),
+    formatMapValue: (v, u) => (v === null ? '—' : formatTemp(v, u)),
     extractCurrent: (m) => m.apparentTemperatureF,
     extractTimeline: (t) => t.apparentTemperatureF,
   },
@@ -111,7 +112,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     formatMapValue: (v, u) => {
       if (v === null) return '—';
       if (v < 0.05) return '0';
-      return u === 'C' ? `${v.toFixed(1)}` : `${(v / 25.4).toFixed(2)}`;
+      return formatPrecipValue(v, u);
     },
     extractCurrent: (m) => m.precipitationMm,
     extractTimeline: (t) => t.precipitationMm,
@@ -122,8 +123,7 @@ export const METRIC_SCALES: Record<MetricLayer, MetricScaleConfig> = {
     shortLabel: 'Wind',
     unitLabel: (u) => (u === 'C' ? 'km/h' : 'mph'),
     stops: WIND_STOPS,
-    formatMapValue: (v, u) =>
-      v === null ? '—' : `${Math.round(u === 'C' ? v * 1.60934 : v)}`,
+    formatMapValue: (v, u) => (v === null ? '—' : `${convertWind(v, u)}`),
     extractCurrent: (m) => m.windSpeedMph,
     extractTimeline: (t) => t.windSpeedMph,
   },
@@ -274,17 +274,58 @@ export function getNextColormapId(current: ColormapId): ColormapId {
   return COLORMAPS[(idx + 1) % COLORMAPS.length]?.id ?? 'default';
 }
 
+export interface ResolvedStateSlice {
+  temperatureF: number;
+  apparentTemperatureF: number;
+  precipitationMm: number;
+  windSpeedMph: number;
+  windDirectionDeg: number;
+  humidity: number;
+  weatherCode: number;
+  metricSource: TimelinePoint | undefined;
+}
+
+export function resolveStateSlice(
+  snap: Pick<StateWeatherSnapshot, 'current' | 'timeline'>,
+  timelineIndex: number,
+  useTimeline: boolean,
+): ResolvedStateSlice {
+  const t = useTimeline ? snap.timeline[timelineIndex] : undefined;
+  return {
+    temperatureF: t?.temperatureF ?? snap.current.temperatureF,
+    apparentTemperatureF: t?.apparentTemperatureF ?? snap.current.apparentTemperatureF,
+    precipitationMm: t?.precipitationMm ?? snap.current.precipitationMm,
+    windSpeedMph: t?.windSpeedMph ?? snap.current.windSpeedMph,
+    windDirectionDeg: t?.windDirectionDeg ?? snap.current.windDirectionDeg,
+    humidity: t?.humidity ?? snap.current.humidity,
+    weatherCode: t?.weatherCode ?? snap.current.weatherCode,
+    metricSource: t,
+  };
+}
+
+export function resolveMetricValue(
+  scale: MetricScaleConfig,
+  current: StateCurrentMetrics,
+  slice: ResolvedStateSlice,
+): number | null {
+  return slice.metricSource
+    ? scale.extractTimeline(slice.metricSource, current)
+    : scale.extractCurrent(current);
+}
+
+function samplePalette<T>(items: T[], normalizedPos: number): { a: T; b: T; frac: number } {
+  const t = Math.max(0, Math.min(1, normalizedPos));
+  const scaled = t * (items.length - 1);
+  const lo = Math.floor(scaled);
+  const hi = Math.min(items.length - 1, Math.ceil(scaled));
+  return { a: items[lo]!, b: items[hi]!, frac: scaled - lo };
+}
+
 function samplePaletteRgb(
   palette: [number, number, number][],
   normalizedPos: number,
 ): [number, number, number] {
-  const t = Math.max(0, Math.min(1, normalizedPos));
-  const scaled = t * (palette.length - 1);
-  const lo = Math.floor(scaled);
-  const hi = Math.min(palette.length - 1, Math.ceil(scaled));
-  const frac = scaled - lo;
-  const a = palette[lo]!;
-  const b = palette[hi]!;
+  const { a, b, frac } = samplePalette(palette, normalizedPos);
   return [
     Math.round(a[0] + (b[0] - a[0]) * frac),
     Math.round(a[1] + (b[1] - a[1]) * frac),
@@ -293,14 +334,8 @@ function samplePaletteRgb(
 }
 
 function sampleStopValue(stops: ColorStop[], normalizedPos: number): number {
-  const t = Math.max(0, Math.min(1, normalizedPos));
-  const scaled = t * (stops.length - 1);
-  const lo = Math.floor(scaled);
-  const hi = Math.min(stops.length - 1, Math.ceil(scaled));
-  const frac = scaled - lo;
-  const a = stops[lo]!.value;
-  const b = stops[hi]!.value;
-  return a + (b - a) * frac;
+  const { a, b, frac } = samplePalette(stops, normalizedPos);
+  return a.value + (b.value - a.value) * frac;
 }
 
 /**
@@ -356,14 +391,15 @@ export function interpolateColor(
   value: number | null,
   stops: ColorStop[],
   isDark: boolean,
+  calmZero = false,
 ): string {
   if (value === null || !Number.isFinite(value)) {
     return isDark ? 'rgb(30, 41, 59)' : 'rgb(226, 232, 240)';
   }
 
-  // Soften zero precipitation/wind in dark mode so map remains calm
+  // Soften zero precipitation/wind so calm regions stay subdued
   if (value <= (stops[0]?.value ?? 0)) {
-    if (stops === PRECIP_STOPS || stops === WIND_STOPS) {
+    if (calmZero || stops === PRECIP_STOPS || stops === WIND_STOPS) {
       return isDark ? 'rgb(24, 34, 52)' : 'rgb(235, 240, 247)';
     }
     const [r, g, b] = stops[0]!.rgb;

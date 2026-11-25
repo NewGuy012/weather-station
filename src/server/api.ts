@@ -10,7 +10,8 @@ import type {
 } from '../shared/types';
 import type { WeatherCacheStore } from '../worker/cache';
 import seedHistorical from './data/seedHistorical.json';
-import { STATE_BY_CODE, US_STATES } from './data/states';
+import { STATE_BY_CODE, US_STATES } from '../shared/states';
+import { RADAR_BBOX_4326, type RadarRegion } from '../shared/radar';
 import { TOP_CITIES_BY_STATE } from './data/topCities';
 import { fetchActiveNwsAlerts } from './providers/nws';
 import {
@@ -23,7 +24,6 @@ import {
   buildHistoricalRadarFrames,
   fetchLiveRadarFrames,
   fetchRadarImagePng,
-  type RadarRegion,
 } from './providers/radar';
 
 const LIVE_STATES_TTL_MS = 15 * 60_000;
@@ -140,13 +140,7 @@ export async function handleApiRequest(
             return Response.json({ ...hit.value, cached: true });
           }
         }
-        const [dataset, alerts] = await Promise.all([
-          fetchAllStatesLive(),
-          getCachedAlerts(cache, forceRefresh).catch(() => null),
-        ]);
-        if (alerts) {
-          dataset.alertsCount = alerts.totalActive;
-        }
+        const dataset = await fetchAllStatesLive();
         await cache.setJson(key, dataset, LIVE_STATES_TTL_MS);
         return Response.json(dataset);
       }
@@ -292,10 +286,10 @@ export async function handleApiRequest(
     if (path === '/api/radar/image') {
       const mode: WeatherMode = url.searchParams.get('mode') === 'live' ? 'live' : 'historical';
       const regionParam = url.searchParams.get('region') ?? 'conus';
-      if (regionParam !== 'conus' && regionParam !== 'alaska' && regionParam !== 'hawaii') {
+      if (!(regionParam in RADAR_BBOX_4326)) {
         return jsonError(400, 'Invalid radar region');
       }
-      const region: RadarRegion = regionParam;
+      const region = regionParam as RadarRegion;
       const ts = url.searchParams.get('ts');
       if (!ts) {
         return jsonError(400, 'Missing ts query parameter');

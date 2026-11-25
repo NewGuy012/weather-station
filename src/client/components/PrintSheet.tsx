@@ -5,7 +5,7 @@ import type {
 } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
 import { getWmoInfo } from '../../shared/wmoCodes';
-import { resolveStateSlice } from './MapCanvas';
+import { resolveStateSlice } from '../utils/scales';
 
 interface PrintSheetProps {
   scope: 'national' | 'state';

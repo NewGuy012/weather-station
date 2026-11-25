@@ -9,7 +9,7 @@ import {
   exportMapAsPng,
   triggerDownload,
 } from '../utils/exporters';
-import { resolveStateSlice } from './MapCanvas';
+import { resolveStateSlice } from '../utils/scales';
 
 interface ExportModalProps {
   open: boolean;

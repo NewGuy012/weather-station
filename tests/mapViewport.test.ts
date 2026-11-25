@@ -13,7 +13,7 @@ import {
   stopsToCssGradient,
 } from '../src/client/utils/scales';
 import seedHistorical from '../src/server/data/seedHistorical.json';
-import { STATE_BY_CODE } from '../src/server/data/states';
+import { STATE_BY_CODE } from '../src/shared/states';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
 import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries } from '../src/client/utils/mapGeometry';

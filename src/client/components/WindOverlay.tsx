@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { StateWeatherSnapshot } from '../../shared/types';
-import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries } from '../utils/mapGeometry';
-import { resolveStateSlice } from './MapCanvas';
+import { MAP_HEIGHT, MAP_WIDTH, getUsClipPath, getUsStateGeometries } from '../utils/mapGeometry';
+import { resolveStateSlice } from '../utils/scales';
 
 interface WindOverlayProps {
   visible: boolean;
@@ -24,17 +24,6 @@ interface Particle {
   y: number;
   age: number;
   maxAge: number;
-}
-
-let cachedUsPath: Path2D | null = null;
-function getUsClipPath(): Path2D {
-  if (cachedUsPath) return cachedUsPath;
-  const path = new Path2D();
-  for (const g of getUsStateGeometries()) {
-    path.addPath(new Path2D(g.pathD));
-  }
-  cachedUsPath = path;
-  return path;
 }
 
 export function WindOverlay({
