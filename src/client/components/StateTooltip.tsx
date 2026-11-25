@@ -85,7 +85,7 @@ export function HoverTooltip({
       )}
 
       <div className="mt-1.5 text-[10px] text-slate-400 dark:text-slate-500">
-        {panActive ? 'Drag to pan • Press P to exit pan mode' : 'Click state for forecast & details'}
+        {panActive ? 'Move mouse to pan • Release Space to select' : 'Click state for forecast & details'}
       </div>
     </div>
   );

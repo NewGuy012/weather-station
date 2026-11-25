@@ -104,6 +104,8 @@ export function App() {
   const [citiesError, setCitiesError] = useState<string | null>(null);
   const [citiesRefreshCount, setCitiesRefreshCount] = useState(0);
   const refreshCitiesPendingRef = useRef(false);
+  const [mapViewModified, setMapViewModified] = useState(false);
+  const [mapResetTrigger, setMapResetTrigger] = useState(0);
 
   const [timelineIndex, setTimelineIndex] = useState<number>(
     DEFAULT_HISTORICAL_PRESET.defaultFrameIndex ?? 30,
@@ -426,27 +428,6 @@ export function App() {
       : `Live NOAA/Open-Meteo ${dataset.cached ? '• Cached' : '• Fresh'}`
     : 'Loading 50-state archive...';
 
-  const metricToolbar = (
-    <MetricToolbar
-      metric={metric}
-      onMetricChange={setMetric}
-      colormap={colormap}
-      onColormapChange={setColormap}
-      reverseColormap={reverseColormap}
-      onToggleReverseColormap={() => setReverseColormap((r) => !r)}
-      unit={unit}
-      mode={mode}
-      showRadar={showRadar}
-      onToggleRadar={() => setShowRadar((v) => !v)}
-      showWind={showWind}
-      onToggleWind={() => setShowWind((v) => !v)}
-      showAlertPolygons={showAlertPolygons}
-      onToggleAlertPolygons={() => setShowAlertPolygons((v) => !v)}
-      alertsCount={alertsData?.totalActive ?? 0}
-      docked={Boolean(dataset)}
-    />
-  );
-
   return (
     <div className="relative h-full w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]">
       <TopBar
@@ -484,14 +465,15 @@ export function App() {
         </div>
       )}
 
-      {dataset && !selectedCode && (
-        <div className="pointer-events-none fixed top-20 right-4 z-20">
+      {dataset && (
+        <div className="pointer-events-none fixed right-3 bottom-3 z-20">
           <ExtremesBar
             states={dataset.states}
             unit={unit}
             timelineIndex={timelineIndex}
             useTimeline={useTimeline}
             onSelectState={(c) => handleSelectState(c)}
+            dockedToDrawer={Boolean(selectedCode && selectedMeta && dataset.states[selectedCode])}
           />
         </div>
       )}
@@ -520,7 +502,8 @@ export function App() {
             citiesLoading={citiesLoading}
             selectedCity={selectedCity || selectedMeta?.primaryCity || ''}
             onSelectCity={setSelectedCity}
-            bottomLeftDock={metricToolbar}
+            resetTrigger={mapResetTrigger}
+            onViewModifiedChange={setMapViewModified}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -580,7 +563,25 @@ export function App() {
         />
       )}
 
-      {!dataset && metricToolbar}
+      <MetricToolbar
+        metric={metric}
+        onMetricChange={setMetric}
+        colormap={colormap}
+        onColormapChange={setColormap}
+        reverseColormap={reverseColormap}
+        onToggleReverseColormap={() => setReverseColormap((r) => !r)}
+        unit={unit}
+        mode={mode}
+        showRadar={showRadar}
+        onToggleRadar={() => setShowRadar((v) => !v)}
+        showWind={showWind}
+        onToggleWind={() => setShowWind((v) => !v)}
+        showAlertPolygons={showAlertPolygons}
+        onToggleAlertPolygons={() => setShowAlertPolygons((v) => !v)}
+        alertsCount={alertsData?.totalActive ?? 0}
+        canResetView={mapViewModified}
+        onResetView={() => setMapResetTrigger((n) => n + 1)}
+      />
 
       {dataset && (
         <BroadcastDock

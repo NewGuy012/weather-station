@@ -1,4 +1,3 @@
-import { Hand, MapPinned, Minus, Plus, RotateCcw } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ColormapId,
@@ -15,8 +14,6 @@ import {
   DEFAULT_ZOOM,
   DRAG_THRESHOLD_PX,
   INITIAL_MAP_VIEW,
-  MAX_ZOOM,
-  MIN_ZOOM,
   type MapViewState,
   type StageSize,
   ZOOM_BUTTON_STEP,
@@ -71,8 +68,10 @@ interface MapCanvasProps {
   onSelectCity?: (cityName: string) => void;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
-  /** Optional toolbar docked directly beneath the vertical map navigation controls */
-  bottomLeftDock?: ReactNode;
+  /** Incrementing counter to reset pan and zoom back to the default view */
+  resetTrigger?: number;
+  /** Called when zoom or pan differs from (or returns to) the default view */
+  onViewModifiedChange?: (modified: boolean) => void;
   /** Exposed SVG ref for PNG export */
   mapContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -100,7 +99,8 @@ export function MapCanvas({
   selectedCity = '',
   onSelectCity,
   overlays,
-  bottomLeftDock,
+  resetTrigger,
+  onViewModifiedChange,
   mapContainerRef,
 }: MapCanvasProps) {
   const geometries = useMemo(() => getUsStateGeometries(), []);
@@ -134,7 +134,6 @@ export function MapCanvas({
 
   const [hovered, setHovered] = useState<{ code: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<MapViewState>(INITIAL_MAP_VIEW);
-  const [panMode, setPanMode] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -150,13 +149,10 @@ export function MapCanvas({
     moved: boolean;
     startedInPanMode: boolean;
   } | null>(null);
+  const spacePanAnchorRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
-
-  const isPanActive = panMode || spaceHeld;
-  const panModeRef = useRef(panMode);
-  panModeRef.current = panMode;
-  const isPanActiveRef = useRef(isPanActive);
-  isPanActiveRef.current = isPanActive;
+  const spaceHeldRef = useRef(spaceHeld);
+  spaceHeldRef.current = spaceHeld;
 
   const setStageRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -211,7 +207,7 @@ export function MapCanvas({
       setView((prev) =>
         zoomViewState(prev, prev.zoom * factor, stageSize, {
           focalOffset,
-          preservePanAtMinZoom: isPanActiveRef.current,
+          preservePanAtMinZoom: spaceHeldRef.current || prev.zoom <= DEFAULT_ZOOM,
         }),
       );
     };
@@ -225,7 +221,7 @@ export function MapCanvas({
       const stageSize = getStageSize();
       setView((prev) =>
         zoomViewState(prev, prev.zoom + delta, stageSize, {
-          preservePanAtMinZoom: isPanActiveRef.current,
+          preservePanAtMinZoom: spaceHeldRef.current || prev.zoom <= DEFAULT_ZOOM,
         }),
       );
     },
@@ -235,12 +231,11 @@ export function MapCanvas({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const isMiddleButton = e.button === 1;
-      const canStartLeftDrag =
-        e.button === 0 && (isPanActiveRef.current || view.zoom > DEFAULT_ZOOM);
+      const canStartLeftDrag = e.button === 0;
       if (!isMiddleButton && !canStartLeftDrag) return;
       if (isInteractiveTarget(e.target)) return;
 
-      const startedInPanMode = isPanActiveRef.current || isMiddleButton;
+      const startedInPanMode = spaceHeldRef.current || isMiddleButton;
       if (startedInPanMode) {
         e.preventDefault();
       }
@@ -261,7 +256,7 @@ export function MapCanvas({
         setHovered(null);
       }
     },
-    [view.zoom, view.pan.x, view.pan.y],
+    [view.pan.x, view.pan.y],
   );
 
   useEffect(() => {
@@ -323,6 +318,37 @@ export function MapCanvas({
   }, [dragActive, getStageSize]);
 
   useEffect(() => {
+    if (!spaceHeld) {
+      spacePanAnchorRef.current = null;
+      return;
+    }
+
+    const handleSpaceMove = (e: PointerEvent) => {
+      if (dragRef.current) {
+        spacePanAnchorRef.current = null;
+        return;
+      }
+      const anchor = spacePanAnchorRef.current;
+      if (!anchor) {
+        spacePanAnchorRef.current = { x: e.clientX, y: e.clientY };
+        setHovered(null);
+        return;
+      }
+      const dx = e.clientX - anchor.x;
+      const dy = e.clientY - anchor.y;
+      if (dx === 0 && dy === 0) return;
+      spacePanAnchorRef.current = { x: e.clientX, y: e.clientY };
+      setView((prev) => panByOffset(prev, dx, dy, getStageSize()));
+    };
+
+    window.addEventListener('pointermove', handleSpaceMove);
+    return () => {
+      window.removeEventListener('pointermove', handleSpaceMove);
+      spacePanAnchorRef.current = null;
+    };
+  }, [spaceHeld, getStageSize]);
+
+  useEffect(() => {
     if (!shortcutsEnabled) {
       setSpaceHeld(false);
       return;
@@ -340,20 +366,9 @@ export function MapCanvas({
 
       if (isEditableTarget(e.target)) return;
 
-      if (e.key.toLowerCase() === 'p' && !e.repeat) {
-        e.preventDefault();
-        setPanMode((prev) => !prev);
-        return;
-      }
-
       if (e.key.toLowerCase() === 'd' && !e.repeat && onToggleDetailedStateMode) {
         e.preventDefault();
         onToggleDetailedStateMode();
-        return;
-      }
-
-      if (e.key === 'Escape' && panModeRef.current) {
-        setPanMode(false);
         return;
       }
 
@@ -370,7 +385,7 @@ export function MapCanvas({
         return;
       }
 
-      if (isPanActiveRef.current) {
+      if (spaceHeldRef.current) {
         const delta = getArrowPanDelta(e);
         if (delta) {
           e.preventDefault();
@@ -399,16 +414,19 @@ export function MapCanvas({
     };
   }, [shortcutsEnabled, getStageSize, zoomByStep, onToggleDetailedStateMode]);
 
-  const resetView = useCallback(() => {
-    setView(INITIAL_MAP_VIEW);
-  }, []);
+  const showReset = isViewModified(view);
 
-  const handleControlClick =
-    (action: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => {
-      // Release focus after pointer clicks so Spacebar panning works immediately afterwards.
-      if (e.detail > 0) e.currentTarget.blur();
-      action();
-    };
+  useEffect(() => {
+    onViewModifiedChange?.(showReset);
+  }, [showReset, onViewModifiedChange]);
+
+  const prevResetTriggerRef = useRef(resetTrigger);
+  useEffect(() => {
+    if (resetTrigger !== undefined && resetTrigger !== prevResetTriggerRef.current) {
+      prevResetTriggerRef.current = resetTrigger;
+      setView(INITIAL_MAP_VIEW);
+    }
+  }, [resetTrigger]);
 
   const selectedGeo = useMemo(
     () => (selectedCode ? geometries.find((g) => g.meta.code === selectedCode) ?? null : null),
@@ -528,28 +546,21 @@ export function MapCanvas({
   const hoveredSnap = hovered ? states[hovered.code] : undefined;
   const hoveredVisual = hovered ? stateVisuals[hovered.code] : undefined;
   const selectedVisual = selectedCode ? stateVisuals[selectedCode] : undefined;
-  const canDrag = isPanActive || view.zoom > DEFAULT_ZOOM;
-  const showReset = isViewModified(view);
-  const canZoomIn = view.zoom < MAX_ZOOM;
-  const canZoomOut = view.zoom > MIN_ZOOM;
-  const zoomPct = Math.round(view.zoom * 100);
+  const isPanning = isDragging || spaceHeld;
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
-      <div
-        ref={viewportRef}
-        className={`relative flex h-full w-full items-center justify-center overflow-hidden select-none ${
-          canDrag ? 'touch-none' : ''
-        }`}
+    <div
+      ref={viewportRef}
+      className="relative flex h-full w-full touch-none items-center justify-center overflow-hidden select-none"
       style={{
-        cursor: isDragging ? 'grabbing' : canDrag ? 'grab' : 'default',
+        cursor: isDragging ? 'grabbing' : spaceHeld ? 'grab' : 'default',
       }}
       onPointerDown={handlePointerDown}
       onMouseLeave={() => {
         setHovered(null);
       }}
       onClick={() => {
-        if (suppressClickRef.current || isPanActive) return;
+        if (suppressClickRef.current || spaceHeld) return;
         if (selectedCode) {
           onSelectState(null);
         }
@@ -558,7 +569,7 @@ export function MapCanvas({
       <div
         ref={setStageRef}
         className={`relative w-full max-w-[1180px] ${
-          isDragging ? 'transition-none' : 'transition-transform duration-300 ease-out'
+          isPanning ? 'transition-none' : 'transition-transform duration-300 ease-out'
         }`}
         style={{
           aspectRatio: `${MAP_WIDTH} / ${MAP_HEIGHT}`,
@@ -626,18 +637,18 @@ export function MapCanvas({
                     (isSelected ? 2.2 : isHovered ? 1.6 : 0.9) / Math.sqrt(Math.max(1, view.zoom))
                   }
                   className={`${
-                    isDragging ? 'cursor-grabbing' : isPanActive ? 'cursor-grab' : 'cursor-pointer'
+                    isDragging ? 'cursor-grabbing' : spaceHeld ? 'cursor-grab' : 'cursor-pointer'
                   } transition-[fill,fill-opacity,stroke-width] duration-300`}
                   onMouseEnter={(e) => {
-                    if (!isDragging) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
+                    if (!isPanning) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
                   }}
                   onMouseMove={(e) => {
-                    if (!isDragging) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
+                    if (!isPanning) setHovered({ code: item.meta.code, x: e.clientX, y: e.clientY });
                   }}
                   onMouseLeave={() => setHovered((prev) => (prev?.code === item.meta.code ? null : prev))}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (suppressClickRef.current || isPanActive) return;
+                    if (suppressClickRef.current || spaceHeld) return;
                     onSelectState(item.meta.code);
                   }}
                 />
@@ -792,10 +803,10 @@ export function MapCanvas({
               <g
                 key={`top-city-${city.rank}-${city.name}`}
                 transform={`translate(${city.px}, ${city.py}) scale(${invScale})`}
-                className={isPanActive ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
+                className={spaceHeld ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (suppressClickRef.current || isPanActive) return;
+                  if (suppressClickRef.current || spaceHeld) return;
                   onSelectCity?.(city.name);
                 }}
               >
@@ -879,7 +890,7 @@ export function MapCanvas({
         </div>
       )}
 
-      {!isDragging && hovered && hoveredSnap && hoveredVisual && hovered.code !== selectedCode && (
+      {!isPanning && hovered && hoveredSnap && hoveredVisual && hovered.code !== selectedCode && (
         <HoverTooltip
           snapshot={hoveredSnap}
           slice={hoveredVisual.slice}
@@ -887,131 +898,9 @@ export function MapCanvas({
           x={hovered.x}
           y={hovered.y}
           alerts={alertsByState[hovered.code]}
-          panActive={isPanActive}
+          panActive={spaceHeld}
         />
       )}
-      </div>
-
-      <div className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-1.5 xl:bottom-3">
-        <div
-          role="toolbar"
-          aria-label="Map navigation controls"
-          className="pointer-events-auto relative z-10 flex flex-col items-stretch gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
-        >
-          {onToggleDetailedStateMode && (
-            <>
-              <button
-                type="button"
-                onClick={handleControlClick(onToggleDetailedStateMode)}
-                aria-label={
-                  detailedStateMode ? 'Disable detailed state mode' : 'Enable detailed state mode'
-                }
-                aria-pressed={detailedStateMode}
-                title={
-                  detailedStateMode
-                    ? 'Exit detailed state mode (D)'
-                    : 'Detailed state mode: zoom into state & show top 10 cities (D)'
-                }
-                className={`flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 transition ${
-                  detailedStateMode
-                    ? 'bg-emerald-600 text-white shadow-xs dark:bg-emerald-500 dark:text-slate-950'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                }`}
-              >
-                <MapPinned size={14} />
-                <kbd
-                  className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
-                    detailedStateMode
-                      ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
-                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-                  }`}
-                >
-                  D
-                </kbd>
-              </button>
-              <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
-            </>
-          )}
-          <button
-            type="button"
-            onClick={handleControlClick(() => setPanMode((v) => !v))}
-            aria-label={panMode ? 'Disable pan mode' : 'Enable pan mode'}
-            aria-pressed={isPanActive}
-            title={
-              panMode
-                ? 'Disable pan mode (P) • Arrow keys pan'
-                : 'Enable pan mode (P) • Hold Space to pan'
-            }
-            className={`flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 transition ${
-              isPanActive
-                ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Hand size={14} />
-            <kbd
-              className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
-                isPanActive
-                  ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
-                  : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
-              }`}
-            >
-              P
-            </kbd>
-          </button>
-          <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
-          <button
-            type="button"
-            onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
-            disabled={!canZoomIn}
-            aria-label="Zoom in map"
-            title="Zoom in (+ / =) • Scroll wheel"
-            className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Plus size={14} />
-            <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-              +
-            </kbd>
-          </button>
-          <div
-            aria-label={`Map zoom ${zoomPct}%`}
-            className="py-0.5 text-center tabular-nums text-[10px] font-semibold text-slate-500 dark:text-slate-400"
-          >
-            {zoomPct}%
-          </div>
-          <button
-            type="button"
-            onClick={handleControlClick(() => zoomByStep(-ZOOM_BUTTON_STEP))}
-            disabled={!canZoomOut}
-            aria-label="Zoom out map"
-            title="Zoom out (-) • Scroll wheel"
-            className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Minus size={14} />
-            <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-              -
-            </kbd>
-          </button>
-          {showReset && (
-            <>
-              <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
-              <button
-                type="button"
-                onClick={handleControlClick(resetView)}
-                aria-label="Reset map view"
-                title="Reset zoom and pan (0)"
-                className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
-              >
-                <RotateCcw size={14} />
-                <kbd className="rounded bg-sky-100/80 px-1 py-0.5 text-[9px] font-semibold leading-none text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
-                  0
-                </kbd>
-              </button>
-            </>
-          )}
-        </div>
-        {bottomLeftDock}
-      </div>
     </div>
   );
 }

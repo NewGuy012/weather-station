@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { ExtremesBar } from '../src/client/components/ExtremesBar';
 import { MapCanvas } from '../src/client/components/MapCanvas';
 import { MetricToolbar } from '../src/client/components/MetricToolbar';
 import { StateDrawer } from '../src/client/components/StateDrawer';
@@ -187,6 +188,23 @@ describe('Colormaps & UI Render Smoke Tests', () => {
     expect(topBarHtml).toContain('US Weather Station');
     expect(topBarHtml).toContain('Print / Export');
 
+    const extremesHtml = renderToStaticMarkup(
+      createElement(ExtremesBar, {
+        states: dataset.states,
+        unit: 'F',
+        timelineIndex: 0,
+        useTimeline: true,
+        onSelectState: () => {},
+        dockedToDrawer: true,
+      }),
+    );
+    expect(extremesHtml).toContain('aria-label="National weather extremes"');
+    expect(extremesHtml).toContain('xl:flex-row');
+    expect(extremesHtml).toContain('min-[1440px]:w-[420px]');
+    expect(extremesHtml).toContain('Warm');
+    expect(extremesHtml).toContain('Cold');
+    expect(extremesHtml).toContain('Wind');
+
     const toolbarHtml = renderToStaticMarkup(
       createElement(MetricToolbar, {
         metric: 'temperature',
@@ -204,9 +222,12 @@ describe('Colormaps & UI Render Smoke Tests', () => {
         showAlertPolygons: false,
         onToggleAlertPolygons: () => {},
         alertsCount: 0,
+        canResetView: true,
+        onResetView: () => {},
       }),
     );
     expect(toolbarHtml).toContain('Viridis');
+    expect(toolbarHtml).toContain('aria-label="Reset map view"');
     expect(toolbarHtml).toContain(stopsToCssGradient(resolveMetricStops('temperature', 'viridis', false)));
 
     const mapHtml = renderToStaticMarkup(
@@ -225,32 +246,13 @@ describe('Colormaps & UI Render Smoke Tests', () => {
         stateCitiesWeather: caCitiesWeather,
         selectedCity: 'San Jose',
         onSelectCity: () => {},
-        bottomLeftDock: createElement(MetricToolbar, {
-          metric: 'temperature',
-          onMetricChange: () => {},
-          colormap: 'plasma',
-          onColormapChange: () => {},
-          reverseColormap: false,
-          onToggleReverseColormap: () => {},
-          unit: 'F',
-          mode: 'historical',
-          showRadar: false,
-          onToggleRadar: () => {},
-          showWind: false,
-          onToggleWind: () => {},
-          showAlertPolygons: false,
-          onToggleAlertPolygons: () => {},
-          alertsCount: 0,
-          docked: true,
-        }),
       }),
     );
     expect(mapHtml).toContain('1. Los Angeles');
     expect(mapHtml).toContain('3. San Jose');
     expect(mapHtml).toContain('10. Anaheim');
-    expect(mapHtml).toContain('aria-label="Map navigation controls"');
-    expect(mapHtml).toMatch(/aria-label="Map navigation controls"[^>]*flex-col/);
-    expect(mapHtml).toMatch(/aria-label="Zoom in map"[\s\S]*aria-label="Zoom out map"[\s\S]*Doppler Radar/);
+    expect(mapHtml).not.toContain('Map navigation controls');
+    expect(mapHtml).not.toContain('Enable pan mode');
 
     const drawerHtml = renderToStaticMarkup(
       createElement(StateDrawer, {
@@ -277,6 +279,7 @@ describe('Colormaps & UI Render Smoke Tests', () => {
       }),
     );
     expect(drawerHtml).toContain('California');
+    expect(drawerHtml).toContain('xl:bottom-14');
     expect(drawerHtml).toContain('Top 10 Populated Cities');
     expect(drawerHtml).toContain('Compare States (0/3)');
     expect(drawerHtml).toContain('Print');

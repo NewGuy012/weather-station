@@ -249,7 +249,7 @@ export function StateDrawer({
   }, [cityOptions, selectedCity, detail?.city, snapshot.city]);
 
   return (
-    <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] dark:border-slate-700/70 dark:bg-slate-900/95">
+    <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] lg:bottom-28 xl:bottom-14 dark:border-slate-700/70 dark:bg-slate-900/95">
       <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">

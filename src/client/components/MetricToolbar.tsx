@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Palette,
   Radar,
+  RotateCcw,
   Wind,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -34,7 +35,8 @@ interface MetricToolbarProps {
   showAlertPolygons: boolean;
   onToggleAlertPolygons: () => void;
   alertsCount: number;
-  docked?: boolean;
+  canResetView?: boolean;
+  onResetView?: () => void;
 }
 
 export function MetricToolbar({
@@ -53,7 +55,8 @@ export function MetricToolbar({
   showAlertPolygons,
   onToggleAlertPolygons,
   alertsCount,
-  docked = false,
+  canResetView = false,
+  onResetView,
 }: MetricToolbarProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -87,11 +90,7 @@ export function MetricToolbar({
   return (
     <div
       ref={toolbarRef}
-      className={
-        docked
-          ? 'no-print pointer-events-none relative z-30 flex max-w-[380px] flex-col gap-1.5'
-          : 'no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[380px] flex-col gap-1.5 xl:bottom-3'
-      }
+      className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[380px] flex-col gap-1.5 xl:bottom-3"
     >
       {paletteOpen && (
         <div
@@ -158,45 +157,59 @@ export function MetricToolbar({
         </div>
       )}
 
-      <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 p-1.5 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85">
-        <button
-          type="button"
-          onClick={onToggleRadar}
-          className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
-            showRadar
-              ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Radar size={14} className={showRadar ? 'animate-spin' : ''} style={{ animationDuration: '4s' }} />
-          <span>Doppler Radar</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onToggleWind}
-          className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
-            showWind
-              ? 'bg-teal-600 text-white shadow-xs dark:bg-teal-500 dark:text-slate-950'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Wind size={14} />
-          <span>Wind Flow</span>
-        </button>
-
-        {mode === 'live' && (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 p-1.5 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85">
           <button
             type="button"
-            onClick={onToggleAlertPolygons}
+            onClick={onToggleRadar}
             className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
-              showAlertPolygons
-                ? 'bg-rose-600 text-white shadow-xs'
+              showRadar
+                ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
                 : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
             }`}
           >
-            <AlertTriangle size={14} />
-            <span>Alerts ({alertsCount})</span>
+            <Radar size={14} className={showRadar ? 'animate-spin' : ''} style={{ animationDuration: '4s' }} />
+            <span>Doppler Radar</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleWind}
+            className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
+              showWind
+                ? 'bg-teal-600 text-white shadow-xs dark:bg-teal-500 dark:text-slate-950'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Wind size={14} />
+            <span>Wind Flow</span>
+          </button>
+
+          {mode === 'live' && (
+            <button
+              type="button"
+              onClick={onToggleAlertPolygons}
+              className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition ${
+                showAlertPolygons
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <AlertTriangle size={14} />
+              <span>Alerts ({alertsCount})</span>
+            </button>
+          )}
+        </div>
+
+        {canResetView && onResetView && (
+          <button
+            type="button"
+            onClick={onResetView}
+            aria-label="Reset map view"
+            title="Reset map zoom and pan (0)"
+            className="pointer-events-auto flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/85 p-2.5 text-sky-600 shadow-sm backdrop-blur-md transition hover:bg-sky-50 dark:border-slate-700/60 dark:bg-slate-900/85 dark:text-sky-400 dark:hover:bg-slate-800"
+          >
+            <RotateCcw size={15} />
           </button>
         )}
       </div>
