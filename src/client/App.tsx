@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { DEFAULT_HISTORICAL_PRESET, HISTORICAL_PRESETS } from '../shared/presets';
 import { buildHistoricalRadarFrames } from '../shared/radar';
 import { STATE_BY_CODE, US_STATES } from '../shared/states';
@@ -100,9 +100,49 @@ async function fetchCachedApiJson<T>(
   return data;
 }
 
+export interface ModeWeatherFxState {
+  mode: WeatherMode;
+  showWeatherFx: boolean;
+}
+
+export type ModeWeatherFxAction =
+  | { type: 'setMode'; mode: WeatherMode }
+  | { type: 'toggleWeatherFx' };
+
+export const INITIAL_MODE_WEATHER_FX_STATE: ModeWeatherFxState = {
+  mode: 'historical',
+  showWeatherFx: false,
+};
+
+/**
+ * Transitions weather mode and applies each mode's Weather FX default
+ * (on for live mode, off for historical mode) whenever the mode changes.
+ */
+export function modeWeatherFxReducer(
+  state: ModeWeatherFxState,
+  action: ModeWeatherFxAction,
+): ModeWeatherFxState {
+  switch (action.type) {
+    case 'setMode':
+      if (action.mode === state.mode) return state;
+      return {
+        mode: action.mode,
+        showWeatherFx: action.mode === 'live',
+      };
+    case 'toggleWeatherFx':
+      return {
+        ...state,
+        showWeatherFx: !state.showWeatherFx,
+      };
+  }
+}
+
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
-  const [mode, setMode] = useState<WeatherMode>('historical');
+  const [{ mode, showWeatherFx }, dispatchModeFx] = useReducer(
+    modeWeatherFxReducer,
+    INITIAL_MODE_WEATHER_FX_STATE,
+  );
   const [unit, setUnit] = useState<TempUnit>('F');
   const [metric, setMetric] = useState<MetricLayer>('temperature');
   const [colormap, setColormap] = useState<ColormapId>(getInitialColormap);
@@ -149,7 +189,6 @@ export function App() {
   const [radarLoading, setRadarLoading] = useState(false);
 
   const [showWind, setShowWind] = useState(false);
-  const [showWeatherFx, setShowWeatherFx] = useState(false);
   const [fxShowcase, setFxShowcase] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [showAlertPolygons, setShowAlertPolygons] = useState(true);
@@ -412,7 +451,7 @@ export function App() {
   }, []);
 
   const handleToggleWeatherFx = useCallback(() => {
-    setShowWeatherFx((prev) => !prev);
+    dispatchModeFx({ type: 'toggleWeatherFx' });
   }, []);
 
   const handleToggleCompare = useCallback((code: string) => {
@@ -425,7 +464,7 @@ export function App() {
 
   const handleModeChange = (nextMode: WeatherMode) => {
     if (nextMode === mode) return;
-    setMode(nextMode);
+    dispatchModeFx({ type: 'setMode', mode: nextMode });
     if (nextMode === 'live') {
       void loadDataset({ targetMode: 'live' });
     } else {
@@ -444,7 +483,7 @@ export function App() {
     setActivePresetId(preset.id);
     setStartDate(preset.startDate);
     setEndDate(preset.endDate);
-    setMode('historical');
+    dispatchModeFx({ type: 'setMode', mode: 'historical' });
     void loadDataset({
       targetMode: 'historical',
       start: preset.startDate,
@@ -458,7 +497,7 @@ export function App() {
     setActivePresetId(undefined);
     setStartDate(s);
     setEndDate(e);
-    setMode('historical');
+    dispatchModeFx({ type: 'setMode', mode: 'historical' });
     void loadDataset({
       targetMode: 'historical',
       start: s,

@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  App,
+  INITIAL_MODE_WEATHER_FX_STATE,
+  modeWeatherFxReducer,
+} from '../src/client/App';
 import { BroadcastDock } from '../src/client/components/BroadcastDock';
 import { DrawerWeatherBackdrop } from '../src/client/components/DrawerWeatherBackdrop';
 import { MapCanvas } from '../src/client/components/MapCanvas';
@@ -179,5 +184,38 @@ describe('Weather FX Rendering Smoke Tests', () => {
       }),
     );
     expect(mapBadgesHtml).toContain('ws-anim-vortex');
+  });
+
+  test('defaults Weather FX on when toggling to live mode and off in historical mode', () => {
+    expect(INITIAL_MODE_WEATHER_FX_STATE).toEqual({
+      mode: 'historical',
+      showWeatherFx: false,
+    });
+
+    const appHtml = renderToStaticMarkup(createElement(App));
+    expect(appHtml).toMatch(/aria-pressed="false"[^>]*title="Toggle animated Weather FX on map \(A\)"/);
+
+    let state = INITIAL_MODE_WEATHER_FX_STATE;
+    state = modeWeatherFxReducer(state, { type: 'setMode', mode: 'live' });
+    expect(state).toEqual({ mode: 'live', showWeatherFx: true });
+
+    state = modeWeatherFxReducer(state, { type: 'toggleWeatherFx' });
+    expect(state).toEqual({ mode: 'live', showWeatherFx: false });
+
+    // Re-selecting the active mode preserves manual toggle state
+    expect(modeWeatherFxReducer(state, { type: 'setMode', mode: 'live' })).toBe(state);
+
+    // Switching back to historical mode disables Weather FX by default
+    state = modeWeatherFxReducer(state, { type: 'setMode', mode: 'historical' });
+    expect(state).toEqual({ mode: 'historical', showWeatherFx: false });
+
+    // Manual toggle in historical mode is preserved when loading another historical window
+    state = modeWeatherFxReducer(state, { type: 'toggleWeatherFx' });
+    expect(state).toEqual({ mode: 'historical', showWeatherFx: true });
+    expect(modeWeatherFxReducer(state, { type: 'setMode', mode: 'historical' })).toBe(state);
+
+    // Toggling live mode again automatically enables Weather FX by default
+    state = modeWeatherFxReducer(state, { type: 'setMode', mode: 'live' });
+    expect(state).toEqual({ mode: 'live', showWeatherFx: true });
   });
 });
