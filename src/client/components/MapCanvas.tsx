@@ -9,7 +9,7 @@ import type {
   TopCityMeta,
   WeatherAlert,
 } from '../../shared/types';
-import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usProjection } from '../utils/mapGeometry';
+import { MAP_HEIGHT, MAP_WIDTH, getUsStateGeometries, usPathGen, usProjection } from '../utils/mapGeometry';
 import {
   DEFAULT_ZOOM,
   DRAG_THRESHOLD_PX,
@@ -47,7 +47,6 @@ import {
   classifySnapshotPhenomenon,
   hasActiveMapFx,
 } from '../../shared/weatherPhenomena';
-import { geoPath } from 'd3-geo';
 
 interface MapCanvasProps {
   states: Record<string, StateWeatherSnapshot>;
@@ -216,10 +215,9 @@ export function MapCanvas({
 
   const alertPaths = useMemo(() => {
     if (!showAlertPolygons || !alertPolygons?.features?.length) return [];
-    const pathGen = geoPath(usProjection);
     return alertPolygons.features
       .map((feat, idx) => {
-        const d = pathGen(feat as never);
+        const d = usPathGen(feat as never);
         if (!d) return null;
         return {
           id: feat.properties?.id ?? `poly-${idx}`,

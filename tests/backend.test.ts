@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { geoContains } from 'd3-geo';
-import { feature } from 'topojson-client';
-import type { GeometryCollection, Topology } from 'topojson-specification';
-import usAtlasStates from 'us-atlas/states-10m.json';
+import { type GeoPermissibleObjects, geoContains } from 'd3-geo';
+import { getUsStateFeatures } from '../src/client/utils/mapGeometry';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
 import {
@@ -52,11 +50,9 @@ describe('50-State Registry & Seed Integrity', () => {
     expect(new Set(US_STATES.map((s) => s.code)).size).toBe(50);
     expect(new Set(US_STATES.map((s) => s.fips)).size).toBe(50);
 
-    const topology = usAtlasStates as unknown as Topology<{
-      states: GeometryCollection<{ name: string }>;
-    }>;
-    const statesGeo = feature(topology, topology.objects.states);
-    const byFips = new Map(statesGeo.features.map((f) => [String(f.id ?? '').padStart(2, '0'), f]));
+    const byFips = new Map(
+      getUsStateFeatures().map((f) => [String(f.id ?? '').padStart(2, '0'), f]),
+    );
 
     for (const st of US_STATES) {
       expect(st.cities.length).toBeGreaterThanOrEqual(2);
@@ -71,7 +67,9 @@ describe('50-State Registry & Seed Integrity', () => {
         expect(city.rank).toBe(i + 1);
         expect(city.population).toBeGreaterThan(0);
         if (i > 0) expect(city.population).toBeLessThanOrEqual(cities[i - 1]!.population);
-        expect(geoContains(feat!, [city.lon, city.lat])).toBe(true);
+        expect(geoContains(feat as unknown as GeoPermissibleObjects, [city.lon, city.lat])).toBe(
+          true,
+        );
       }
     }
   });
