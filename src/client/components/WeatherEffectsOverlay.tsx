@@ -6,9 +6,7 @@ import type {
   WeatherAlert,
 } from '../../shared/types';
 import {
-  INTENSITY_MULTIPLIERS,
   type StatePhenomenon,
-  type WeatherFxIntensity,
   type WeatherPhenomenon,
   buildCityShowcasePhenomena,
   buildShowcasePhenomena,
@@ -46,7 +44,6 @@ export interface WeatherEffectsOverlayProps {
   timelineIndex: number;
   useTimeline: boolean;
   isDark: boolean;
-  intensity: WeatherFxIntensity;
   showcase: boolean;
   alertsByState?: Record<string, WeatherAlert[]>;
   detailedStateMode?: boolean;
@@ -263,30 +260,29 @@ function createParticle(zone: ActiveRenderZone, randomLife: boolean): FxParticle
   };
 }
 
-function targetParticleCount(zone: ActiveRenderZone, intensity: WeatherFxIntensity): number {
+function targetParticleCount(zone: ActiveRenderZone): number {
   const { phenomenon, strength } = zone.statePhenomenon;
-  const mult = INTENSITY_MULTIPLIERS[intensity];
   const areaScale = Math.max(0.45, Math.min(1.6, Math.sqrt(zone.width * zone.height) / 55));
 
   switch (phenomenon) {
     case 'thunderstorm':
     case 'hail':
     case 'blizzard':
-      return Math.max(4, Math.min(24, Math.round((8 + strength * 8) * areaScale * mult)));
+      return Math.max(4, Math.min(24, Math.round((8 + strength * 8) * areaScale)));
     case 'rain':
     case 'snow':
     case 'freezing-rain':
-      return Math.max(3, Math.min(20, Math.round((6 + strength * 7) * areaScale * mult)));
+      return Math.max(3, Math.min(20, Math.round((6 + strength * 7) * areaScale)));
     case 'drizzle':
     case 'cyclone':
-      return Math.max(3, Math.min(16, Math.round((5 + strength * 5) * areaScale * mult)));
+      return Math.max(3, Math.min(16, Math.round((5 + strength * 5) * areaScale)));
     case 'fog':
-      return Math.max(2, Math.min(6, Math.round((2 + strength * 2.2) * mult)));
+      return Math.max(2, Math.min(6, Math.round(2 + strength * 2.2)));
     case 'heat':
     case 'frost':
     case 'aqi':
     case 'humidity':
-      return Math.max(3, Math.min(12, Math.round((4 + strength * 4) * areaScale * mult)));
+      return Math.max(3, Math.min(12, Math.round((4 + strength * 4) * areaScale)));
     case 'uv':
     case 'cloudy':
       return 0;
@@ -302,7 +298,6 @@ export function WeatherEffectsOverlay({
   timelineIndex,
   useTimeline,
   isDark,
-  intensity,
   showcase,
   alertsByState = {},
   detailedStateMode = false,
@@ -414,10 +409,9 @@ export function WeatherEffectsOverlay({
   const configRef = useRef({
     activeZones,
     isDark,
-    intensity,
     zoom,
   });
-  configRef.current = { activeZones, isDark, intensity, zoom };
+  configRef.current = { activeZones, isDark, zoom };
 
   const runtimeMapRef = useRef<Map<string, ZoneRuntime>>(new Map());
   const drawStaticRef = useRef<(() => void) | null>(null);
@@ -440,9 +434,9 @@ export function WeatherEffectsOverlay({
     let rafId = 0;
     let lastTime = performance.now();
 
-    const syncZoneRuntime = (zone: ActiveRenderZone, fxIntensity: WeatherFxIntensity): ZoneRuntime => {
+    const syncZoneRuntime = (zone: ActiveRenderZone): ZoneRuntime => {
       let rt = runtimeMapRef.current.get(zone.key);
-      const targetCount = targetParticleCount(zone, fxIntensity);
+      const targetCount = targetParticleCount(zone);
       if (!rt) {
         rt = {
           phenomenon: zone.statePhenomenon.phenomenon,
@@ -485,11 +479,9 @@ export function WeatherEffectsOverlay({
     };
 
     const drawFrame = (now: number, dt: number) => {
-      const { activeZones: zones, isDark: dark, intensity: fxIntensity, zoom: mapZoom } =
-        configRef.current;
+      const { activeZones: zones, isDark: dark, zoom: mapZoom } = configRef.current;
       const palette = dark ? DARK_FX_PALETTE : LIGHT_FX_PALETTE;
       const zoomScale = 1 / Math.sqrt(Math.max(1, mapZoom));
-      const mult = INTENSITY_MULTIPLIERS[fxIntensity];
       const timeSec = now / 1000;
 
       ctx.setTransform(CANVAS_SCALE, 0, 0, CANVAS_SCALE, 0, 0);
@@ -504,7 +496,7 @@ export function WeatherEffectsOverlay({
 
       for (let zIdx = 0; zIdx < zones.length; zIdx++) {
         const zone = zones[zIdx]!;
-        const rt = syncZoneRuntime(zone, fxIntensity);
+        const rt = syncZoneRuntime(zone);
         rt.alpha = reducedMotion ? 1 : Math.min(1, rt.alpha + dt * 3.0);
 
         const zoneAlpha = rt.alpha * zone.dimFactor;
@@ -523,19 +515,13 @@ export function WeatherEffectsOverlay({
           phenomenon === 'freezing-rain' ||
           phenomenon === 'cloudy';
 
-        const baseClouds = zone.isCityCell
+        const cloudCount = zone.isCityCell
           ? 1
           : zone.span < 35
             ? 1
             : zone.span < 72
               ? 2
               : 3;
-        const cloudCount =
-          fxIntensity === 'subtle'
-            ? Math.max(1, baseClouds - 1)
-            : fxIntensity === 'dramatic' && !zone.isCityCell
-              ? Math.min(4, baseClouds + 1)
-              : baseClouds;
         const clouds = hasClouds
           ? pickCloudPositions(zone, cloudCount, timeSec, windAngleRad, windSpeedMph, zoomScale)
           : [];
@@ -562,7 +548,7 @@ export function WeatherEffectsOverlay({
                 lt.strikeElapsed = -1;
                 const baseDelay =
                   phenomenon === 'thunderstorm' ? 2.4 : phenomenon === 'hail' ? 3.2 : 4.2;
-                lt.cooldown = (baseDelay / mult) * (0.45 + Math.random() * 0.9);
+                lt.cooldown = baseDelay * (0.45 + Math.random() * 0.9);
               }
             } else {
               lt.cooldown -= dt;
@@ -964,7 +950,7 @@ export function WeatherEffectsOverlay({
     if (visible && drawStaticRef.current) {
       drawStaticRef.current();
     }
-  }, [visible, activeZones, isDark, intensity, zoom]);
+  }, [visible, activeZones, isDark, zoom]);
 
   if (!visible) return null;
 

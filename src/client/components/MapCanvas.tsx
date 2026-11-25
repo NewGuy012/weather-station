@@ -78,7 +78,6 @@ interface MapCanvasProps {
   /** Whether animated Weather FX are active (adds subtle alert pulse & enables 'A' shortcut) */
   showWeatherFx?: boolean;
   onToggleWeatherFx?: () => void;
-  showWeatherBadges?: boolean;
   fxShowcase?: boolean;
   /** Called when map zoom factor changes */
   onZoomChange?: (zoom: number) => void;
@@ -115,7 +114,6 @@ export function MapCanvas({
   overlays,
   showWeatherFx = false,
   onToggleWeatherFx,
-  showWeatherBadges = true,
   fxShowcase = false,
   onZoomChange,
   resetTrigger,
@@ -760,7 +758,6 @@ export function MapCanvas({
             const isSelected = selectedCode === item.meta.code;
             const showBadge =
               showWeatherFx &&
-              showWeatherBadges &&
               phenomenon !== 'cloudy' &&
               hasActiveMapFx(phenomenon, metric);
 

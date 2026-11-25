@@ -27,8 +27,6 @@ export type WeatherPhenomenon =
   | 'aqi'
   | 'humidity';
 
-export type WeatherFxIntensity = 'subtle' | 'normal' | 'dramatic';
-
 export interface PhenomenonTelemetry {
   weatherCode: number;
   precipitationMm: number;
@@ -72,12 +70,6 @@ export const PHENOMENON_LABELS: Record<WeatherPhenomenon, string> = {
   uv: 'High UV',
   aqi: 'Haze / Smoke',
   humidity: 'Humid Mist',
-};
-
-export const INTENSITY_MULTIPLIERS: Record<WeatherFxIntensity, number> = {
-  subtle: 0.6,
-  normal: 1,
-  dramatic: 1.45,
 };
 
 const PRECIP_AND_STORM_SET = new Set<WeatherPhenomenon>([

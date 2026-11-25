@@ -1,6 +1,5 @@
-import { CloudRain, Eye, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
+import { CloudRain, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
 import type { RadarFrame, WeatherMode } from '../../shared/types';
-import type { WeatherFxIntensity } from '../../shared/weatherPhenomena';
 
 interface BroadcastDockProps {
   mode: WeatherMode;
@@ -21,10 +20,6 @@ interface BroadcastDockProps {
   onRadarOpacityChange: (op: number) => void;
   radarLoading: boolean;
   showWeatherFx?: boolean;
-  fxIntensity?: WeatherFxIntensity;
-  onFxIntensityChange?: (intensity: WeatherFxIntensity) => void;
-  showWeatherBadges?: boolean;
-  onToggleWeatherBadges?: () => void;
   fxShowcase?: boolean;
   onToggleFxShowcase?: () => void;
   activeFxCount?: number;
@@ -65,10 +60,6 @@ export function BroadcastDock({
   onRadarOpacityChange,
   radarLoading,
   showWeatherFx = false,
-  fxIntensity = 'normal',
-  onFxIntensityChange,
-  showWeatherBadges = true,
-  onToggleWeatherBadges,
   fxShowcase = false,
   onToggleFxShowcase,
   activeFxCount = 0,
@@ -104,47 +95,6 @@ export function BroadcastDock({
             </div>
 
             <div className="flex items-center gap-1.5">
-              {onFxIntensityChange && (
-                <div
-                  role="group"
-                  aria-label="Weather FX intensity"
-                  className="flex items-center rounded-lg bg-slate-100 p-0.5 text-[10px] font-medium dark:bg-slate-800"
-                >
-                  {(['subtle', 'normal', 'dramatic'] as const).map((level) => (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => onFxIntensityChange(level)}
-                      aria-pressed={fxIntensity === level}
-                      className={`rounded-md px-1.5 py-0.5 capitalize transition ${
-                        fxIntensity === level
-                          ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {onToggleWeatherBadges && (
-                <button
-                  type="button"
-                  onClick={onToggleWeatherBadges}
-                  aria-pressed={showWeatherBadges}
-                  title="Show animated condition icons next to active states"
-                  className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition ${
-                    showWeatherBadges
-                      ? 'bg-indigo-600 text-white shadow-xs dark:bg-indigo-500 dark:text-slate-950'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  <Eye size={11} />
-                  <span>Icons</span>
-                </button>
-              )}
-
               {onToggleFxShowcase && (
                 <button
                   type="button"

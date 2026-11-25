@@ -314,8 +314,6 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
         onRadarOpacityChange: () => {},
         radarLoading: false,
         showWeatherFx: true,
-        fxIntensity: 'dramatic',
-        onFxIntensityChange: () => {},
         fxShowcase: true,
         onToggleFxShowcase: () => {},
         activeFxCount: 12,
@@ -324,7 +322,9 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
     expect(dockHtml).toContain('Weather FX');
     expect(dockHtml).toContain('Preview Showcase');
     expect(dockHtml).toContain('FX Showcase');
-    expect(dockHtml).toContain('dramatic');
+    expect(dockHtml).not.toContain('Subtle');
+    expect(dockHtml).not.toContain('Dramatic');
+    expect(dockHtml).not.toContain('>Icons<');
 
     const dataset = seedHistorical as unknown as WeatherDatasetResponse;
     const hiddenOverlayHtml = renderToStaticMarkup(
@@ -335,7 +335,6 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
         timelineIndex: 30,
         useTimeline: true,
         isDark: false,
-        intensity: 'normal',
         showcase: false,
       }),
     );
@@ -349,7 +348,6 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
         timelineIndex: 30,
         useTimeline: true,
         isDark: true,
-        intensity: 'normal',
         showcase: true,
       }),
     );
@@ -420,7 +418,6 @@ describe('Weather FX UI Controls & Map Overlay Markup', () => {
         selectedCode: null,
         onSelectState: () => {},
         showWeatherFx: true,
-        showWeatherBadges: true,
         fxShowcase: true,
       }),
     );
