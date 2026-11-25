@@ -1,0 +1,173 @@
+import { describe, expect, test } from 'bun:test';
+import { WeatherCache } from '../src/server/cache';
+import { US_STATES } from '../src/server/data/states';
+import { parseNwsAlerts } from '../src/server/providers/nws';
+import { buildBatchDataset, computeTimelineStride, ensureUtcIso } from '../src/server/providers/openMeteo';
+import { buildHistoricalRadarFrames, parseNoaaCapabilitiesTimes } from '../src/server/providers/radar';
+import { degToCompass, fToC, formatTemp } from '../src/shared/units';
+import { getWmoInfo } from '../src/shared/wmoCodes';
+
+describe('50-State Registry & Seed Integrity', () => {
+  test('contains exactly 50 unique US states with unique FIPS and codes', () => {
+    expect(US_STATES).toHaveLength(50);
+    const codes = new Set(US_STATES.map((s) => s.code));
+    const fips = new Set(US_STATES.map((s) => s.fips));
+    expect(codes.size).toBe(50);
+    expect(fips.size).toBe(50);
+    for (const s of US_STATES) {
+      expect(s.cities.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe('WeatherCache (bun:sqlite)', () => {
+  test('stores, retrieves, and expires JSON and binary entries', () => {
+    const cache = new WeatherCache(':memory:');
+    const now = 1_000_000;
+
+    cache.setJson('live', { temp: 72 }, 5_000, now);
+    expect(cache.getJson<{ temp: number }>('live', now + 1000)?.value.temp).toBe(72);
+    expect(cache.getJson('live', now + 6000)).toBeNull();
+
+    cache.setJson('hist', { temp: 45 }, null, now);
+    expect(cache.getJson<{ temp: number }>('hist', now + 999_999_999)?.value.temp).toBe(45);
+
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    cache.setBlob('radar-1', bytes, 'image/png', 10_000, now);
+    const hit = cache.getBlob('radar-1', now + 500);
+    expect(hit?.contentType).toBe('image/png');
+    expect(Array.from(hit?.data ?? [])).toEqual([137, 80, 78, 71]);
+
+    cache.close();
+  });
+});
+
+describe('Open-Meteo Parsers & Helpers', () => {
+  test('normalizes UTC timestamps and chooses timeline stride cleanly', () => {
+    expect(ensureUtcIso('2026-11-15T12:00')).toBe('2026-11-15T12:00Z');
+    expect(ensureUtcIso('2026-11-15T12:00Z')).toBe('2026-11-15T12:00Z');
+    expect(computeTimelineStride(48)).toBe(1);
+    expect(computeTimelineStride(96)).toBe(2);
+    expect(computeTimelineStride(120)).toBe(3);
+  });
+
+  test('builds batch dataset from location payloads', () => {
+    const subset = US_STATES.slice(0, 2);
+    const dataset = buildBatchDataset(
+      [
+        {
+          latitude: 33.52,
+          longitude: -86.81,
+          timezone: 'GMT',
+          hourly: {
+            time: ['2026-11-15T00:00', '2026-11-15T01:00', '2026-11-15T02:00'],
+            temperature_2m: [60, 62, 64],
+            apparent_temperature: [59, 61, 63],
+            relative_humidity_2m: [70, 68, 65],
+            precipitation: [0, 0.2, 0],
+            wind_speed_10m: [5, 7, 9],
+            wind_direction_10m: [180, 190, 200],
+            weather_code: [0, 61, 2],
+          },
+          daily: {
+            time: ['2026-11-15'],
+            temperature_2m_max: [66],
+            temperature_2m_min: [52],
+          },
+        },
+        {
+          latitude: 61.22,
+          longitude: -149.9,
+          timezone: 'GMT',
+          hourly: {
+            time: ['2026-11-15T00:00', '2026-11-15T01:00', '2026-11-15T02:00'],
+            temperature_2m: [22, 21, 20],
+            relative_humidity_2m: [80, 82, 85],
+            precipitation: [0, 0, 0.5],
+            wind_speed_10m: [12, 14, 15],
+            wind_direction_10m: [350, 355, 5],
+            weather_code: [3, 3, 71],
+          },
+          daily: {
+            time: ['2026-11-15'],
+            temperature_2m_max: [25],
+            temperature_2m_min: [15],
+          },
+        },
+      ],
+      [null, { hourly: { time: ['2026-11-15T00:00', '2026-11-15T01:00', '2026-11-15T02:00'], us_aqi: [18, 20, 19], uv_index: [0, 1, 0] } }],
+      subset,
+      {
+        mode: 'historical',
+        source: 'open-meteo-archive',
+        startDate: '2026-11-15',
+        endDate: '2026-11-15',
+        defaultFrameIndex: 1,
+      },
+    );
+
+    expect(dataset.timelineHours).toEqual(['2026-11-15T00:00Z', '2026-11-15T01:00Z', '2026-11-15T02:00Z']);
+    expect(dataset.states.AL?.current.temperatureF).toBe(62);
+    expect(dataset.states.AK?.current.usAqi).toBe(20);
+    expect(dataset.states.AK?.timeline[2]?.weatherCode).toBe(71);
+  });
+});
+
+describe('NWS Alerts & Radar Parsers', () => {
+  test('groups NWS alerts by 2-letter state UGC codes and sorts by severity', () => {
+    const parsed = parseNwsAlerts({
+      features: [
+        {
+          id: 'a1',
+          type: 'Feature',
+          geometry: null,
+          properties: {
+            id: 'a1',
+            event: 'Wind Advisory',
+            severity: 'Minor',
+            geocode: { UGC: ['CAZ006', 'PKZ999'] },
+            areaDesc: 'San Francisco',
+          },
+        },
+        {
+          id: 'a2',
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+          properties: {
+            id: 'a2',
+            event: 'Tornado Warning',
+            severity: 'Extreme',
+            geocode: { UGC: ['OKC109', 'CAZ006'] },
+            areaDesc: 'Oklahoma County',
+          },
+        },
+      ],
+    });
+
+    expect(parsed.totalActive).toBe(2);
+    expect(parsed.byState.CA?.map((a) => a.event)).toEqual(['Tornado Warning', 'Wind Advisory']);
+    expect(parsed.byState.OK).toHaveLength(1);
+    expect(parsed.featuresGeoJson.features).toHaveLength(1);
+  });
+
+  test('parses NOAA WMS Capabilities timestamps and builds historical frames', () => {
+    const xml = `<Dimension name="time" default="2026-11-25T02:30:00Z">2026-11-25T01:00:00Z,2026-11-25T01:15:00Z,2026-11-25T01:30:00Z,2026-11-25T02:00:00Z</Dimension>`;
+    expect(parseNoaaCapabilitiesTimes(xml, 4)).toEqual([
+      '2026-11-25T01:00:00Z',
+      '2026-11-25T01:15:00Z',
+      '2026-11-25T01:30:00Z',
+      '2026-11-25T02:00:00Z',
+    ]);
+
+    const hist = buildHistoricalRadarFrames('2024-01-14T18:00:00Z', 6);
+    expect(hist.frames).toHaveLength(6);
+    expect(hist.frames[5]?.timestamp).toBe('2024-01-14T18:00:00Z');
+  });
+
+  test('formats units and WMO codes cleanly', () => {
+    expect(Math.round(fToC(32))).toBe(0);
+    expect(formatTemp(77, 'C', true)).toBe('25°C');
+    expect(degToCompass(225)).toBe('SW');
+    expect(getWmoInfo(95).category).toBe('thunderstorm');
+  });
+});

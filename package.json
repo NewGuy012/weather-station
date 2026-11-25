@@ -1,0 +1,32 @@
+{
+  "name": "us-weather-station",
+  "version": "0.1.0",
+  "description": "Interactive 50-state US weather station powered by Bun, TypeScript, Open-Meteo, NWS, and NOAA/IEM Doppler radar.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot src/server/index.ts",
+    "start": "NODE_ENV=production bun src/server/index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "seed": "bun run src/server/scripts/generateSeed.ts"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "topojson-client": "^3.1.0",
+    "us-atlas": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/d3-geo": "^3.1.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/topojson-client": "^3.1.5",
+    "bun-plugin-tailwind": "latest",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.3"
+  }
+}
