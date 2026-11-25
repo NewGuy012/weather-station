@@ -108,7 +108,6 @@ export function parseNwsAlerts(raw: NwsResponse): AlertsResponse {
     }
   }
 
-  // Sort alerts inside each state by severity rank
   const severityRank: Record<WeatherAlert['severity'], number> = {
     Extreme: 0,
     Severe: 1,

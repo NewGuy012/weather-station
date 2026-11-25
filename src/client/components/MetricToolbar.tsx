@@ -152,7 +152,6 @@ export function MetricToolbar({
         </div>
       )}
 
-      {/* Broadcast & Radar Overlays */}
       <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 p-1.5 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85">
         <button
           type="button"
@@ -196,7 +195,6 @@ export function MetricToolbar({
         )}
       </div>
 
-      {/* Metric Pills + Legend */}
       <div className="pointer-events-auto flex flex-col gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 p-2 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85">
         <div className="flex flex-wrap gap-1">
           {METRIC_LIST.map((m) => (
@@ -215,7 +213,6 @@ export function MetricToolbar({
           ))}
         </div>
 
-        {/* Minimal Gradient Legend */}
         <div className="flex items-center gap-2 px-0.5">
           <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
             {scale.label} ({scale.unitLabel(unit)})

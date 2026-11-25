@@ -33,7 +33,6 @@ export function PrintSheet({
 
   return (
     <div className="print-only bg-white p-2 text-slate-900">
-      {/* Report Header */}
       <div className="flex items-end justify-between border-b-2 border-slate-900 pb-3">
         <div>
           <div className="text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
@@ -58,7 +57,6 @@ export function PrintSheet({
 
       {showState ? (
         <div className="mt-4 space-y-4">
-          {/* State Summary Card */}
           <div className="print-card grid grid-cols-4 gap-3 rounded-lg border border-slate-300 p-3">
             <div>
               <div className="text-[10px] text-slate-500 uppercase">Temperature</div>
@@ -99,7 +97,6 @@ export function PrintSheet({
             </div>
           </div>
 
-          {/* NWS Alerts */}
           {detail.alerts.length > 0 && (
             <div className="print-card rounded-lg border border-rose-400 bg-rose-50 p-3">
               <div className="text-xs font-bold text-rose-800 uppercase">
@@ -114,7 +111,6 @@ export function PrintSheet({
             </div>
           )}
 
-          {/* Daily Summary */}
           <div>
             <h2 className="mb-1.5 text-xs font-bold tracking-wider text-slate-700 uppercase">
               Daily Summary
@@ -145,7 +141,6 @@ export function PrintSheet({
             </table>
           </div>
 
-          {/* Hourly Sample Table (first 24h) */}
           <div>
             <h2 className="mb-1.5 text-xs font-bold tracking-wider text-slate-700 uppercase">
               Hourly Observations (24h Sample)
@@ -181,7 +176,6 @@ export function PrintSheet({
           </div>
         </div>
       ) : (
-        /* National 50-State Table */
         <div className="mt-4">
           <table className="text-left text-[10.5px] tabular-nums">
             <thead>

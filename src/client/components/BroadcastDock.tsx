@@ -3,7 +3,6 @@ import type { RadarFrame, WeatherMode } from '../../shared/types';
 
 interface BroadcastDockProps {
   mode: WeatherMode;
-  // Weather front timeline
   timelineHours: string[];
   timelineIndex: number;
   onTimelineChange: (idx: number) => void;
@@ -11,7 +10,6 @@ interface BroadcastDockProps {
   onToggleTimelinePlay: () => void;
   timelineSpeed: number;
   onCycleTimelineSpeed: () => void;
-  // Doppler radar loop
   showRadar: boolean;
   radarFrames: RadarFrame[];
   radarFrameIndex: number;
@@ -66,7 +64,6 @@ export function BroadcastDock({
   return (
     <div className="no-print pointer-events-none fixed inset-x-0 bottom-3 z-20 flex justify-center px-3">
       <div className="pointer-events-auto flex w-full max-w-[540px] flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-3.5 py-2.5 shadow-lg backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/90">
-        {/* Doppler Radar Loop Controls (when Radar is ON) */}
         {showRadar && (
           <div className="flex flex-col gap-1.5 border-b border-slate-100 pb-2 dark:border-slate-800">
             <div className="flex items-center justify-between gap-2 text-xs">
@@ -119,7 +116,6 @@ export function BroadcastDock({
                   onChange={(e) => onRadarFrameChange(Number(e.target.value))}
                   className="h-1.5 flex-1 cursor-pointer accent-sky-500"
                 />
-                {/* Classic dBZ Reflectivity Color Strip */}
                 <div className="hidden items-center gap-1 text-[9px] text-slate-400 sm:flex">
                   <span>Lt</span>
                   <div
@@ -136,7 +132,6 @@ export function BroadcastDock({
           </div>
         )}
 
-        {/* Broadcast Weather Front Scrubber */}
         {hasTimeline && (
           <div className="flex items-center gap-2.5">
             <div className="flex items-center gap-1">

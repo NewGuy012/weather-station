@@ -551,7 +551,6 @@ export function MapCanvas({
         }
       }}
     >
-      {/* Zoomable aspect-locked 975x610 map stage */}
       <div
         ref={setStageRef}
         className={`relative w-full max-w-[1180px] ${
@@ -568,7 +567,6 @@ export function MapCanvas({
           role="img"
           aria-label="Interactive United States 50-state weather map"
         >
-          {/* Subtle inset dividers for Alaska and Hawaii */}
           <g
             className="stroke-slate-300/70 dark:stroke-slate-700/70"
             fill="none"
@@ -593,7 +591,6 @@ export function MapCanvas({
             Hawaii
           </text>
 
-          {/* 50 US State Choropleth Polygons */}
           <g>
             {geometries.map((item) => {
               const fill =
@@ -644,7 +641,6 @@ export function MapCanvas({
             })}
           </g>
 
-          {/* NWS Severe Alert Polygons (Live Mode) */}
           {alertPaths.length > 0 && (
             <g className="pointer-events-none">
               {alertPaths.map((poly) => (
@@ -672,10 +668,9 @@ export function MapCanvas({
           )}
         </svg>
 
-        {/* Slot for Radar & Wind Canvas layers locked identically to 975x610 */}
         {overlays}
 
-        {/* State Labels & Compact Leader Callouts Layer (above radar so readable!) */}
+        {/* Rendered above canvas overlays so state labels stay legible over radar */}
         <svg
           viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
@@ -761,7 +756,6 @@ export function MapCanvas({
                     >
                       {displayVal}
                     </text>
-                    {/* Tiny weather dot or alert dot */}
                     {hasAlerts && (
                       <circle cx={14} cy={-5} r={3.2} fill="#ef4444" stroke="#ffffff" strokeWidth={1} />
                     )}
@@ -782,7 +776,6 @@ export function MapCanvas({
             );
           })}
 
-          {/* Detailed State Mode: Top 10 Populated City Markers */}
           {cityMarkers.map((city) => {
             const invScale = 1 / Math.max(0.8, view.zoom);
             const isActiveCity = city.name.toLowerCase() === selectedCity.toLowerCase();
@@ -894,7 +887,6 @@ export function MapCanvas({
         />
       )}
 
-      {/* Map Detailed Mode, Pan & Zoom Controls */}
       <div
         className="no-print absolute top-4 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
         onClick={(e) => e.stopPropagation()}

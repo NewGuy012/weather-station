@@ -95,7 +95,6 @@ export function ExportModal({
         className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 dark:border-slate-800">
           <div>
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">
@@ -115,7 +114,6 @@ export function ExportModal({
           </button>
         </div>
 
-        {/* Scope selector + Quick Exports */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
           <div className="flex items-center rounded-xl bg-slate-100 p-0.5 text-xs font-medium dark:bg-slate-800">
             <button
@@ -172,7 +170,6 @@ export function ExportModal({
           </div>
         </div>
 
-        {/* Live Print Preview Table */}
         <div className="flex-1 overflow-y-auto bg-slate-50/70 p-5 dark:bg-slate-950/50">
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xs">
             <div className="flex items-baseline justify-between border-b border-slate-200 pb-2">
@@ -250,7 +247,6 @@ export function ExportModal({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 dark:border-slate-800">
           <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Download size={12} />

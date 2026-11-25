@@ -112,7 +112,6 @@ export function TopBar({
   return (
     <header className="no-print pointer-events-none fixed inset-x-0 top-3 z-30 flex justify-center px-3">
       <div className="pointer-events-auto flex w-full max-w-[1380px] flex-nowrap items-center justify-between gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 px-2.5 py-2 shadow-sm backdrop-blur-md lg:gap-2 lg:px-3 dark:border-slate-700/60 dark:bg-slate-900/85">
-        {/* Brand & Source */}
         <div className="flex min-w-0 shrink items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-sky-500 dark:text-slate-950">
             <Compass size={17} />
@@ -132,9 +131,7 @@ export function TopBar({
           </div>
         </div>
 
-        {/* Center Controls: Mode + Historical Date / Preset Picker + Search */}
         <div className="flex shrink-0 flex-nowrap items-center gap-1.5 lg:gap-2">
-          {/* Mode Switch */}
           <div className="flex shrink-0 items-center rounded-xl bg-slate-100 p-0.5 dark:bg-slate-800">
             <button
               type="button"
@@ -243,7 +240,6 @@ export function TopBar({
             </div>
           )}
 
-          {/* Quick State / City Search */}
           <div className="relative shrink-0">
             <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs lg:px-2.5 dark:border-slate-700 dark:bg-slate-800/80">
               <Search size={13} className="shrink-0 text-slate-400" />
@@ -293,7 +289,6 @@ export function TopBar({
           </div>
         </div>
 
-        {/* Right Actions: Refresh, °F/°C, Theme Toggle, Print/Export */}
         <div className="flex shrink-0 flex-nowrap items-center gap-1 lg:gap-1.5">
           {mode === 'live' && (
             <button
@@ -307,7 +302,6 @@ export function TopBar({
             </button>
           )}
 
-          {/* °F / °C */}
           <div className="flex shrink-0 items-center rounded-xl bg-slate-100 p-0.5 text-xs font-semibold dark:bg-slate-800">
             <button
               type="button"
@@ -333,7 +327,6 @@ export function TopBar({
             </button>
           </div>
 
-          {/* Light / Dark Theme Toggle */}
           <button
             type="button"
             onClick={onThemeToggle}
@@ -345,7 +338,6 @@ export function TopBar({
             <span className="hidden lg:inline">{theme === 'light' ? 'Dark' : 'Light'}</span>
           </button>
 
-          {/* Print / Export */}
           <button
             type="button"
             onClick={onOpenExport}

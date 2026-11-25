@@ -93,7 +93,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           </linearGradient>
         </defs>
 
-        {/* Subtle baseline */}
         <line
           x1={padX}
           y1={padTop + plotH}
@@ -103,7 +102,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           strokeWidth={1}
         />
 
-        {/* Precipitation bars */}
         {coords.map((c, idx) =>
           c.precipH > 0.5 ? (
             <rect
@@ -118,7 +116,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           ) : null,
         )}
 
-        {/* Temperature curve & area */}
         <path d={areaPath} fill="url(#tempAreaGrad)" />
         <path
           d={linePath}
@@ -130,7 +127,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           strokeLinejoin="round"
         />
 
-        {/* X-axis labels every ~6 points */}
         {coords.map((c, idx) => {
           if (idx % Math.max(4, Math.floor(coords.length / 5)) !== 0 && idx !== coords.length - 1) {
             return null;
@@ -148,7 +144,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           );
         })}
 
-        {/* Hover indicator */}
         {active && (
           <g>
             <line
@@ -171,7 +166,6 @@ export function HourlyChart({ hourly, unit, maxPoints = 36 }: HourlyChartProps) 
           </g>
         )}
 
-        {/* Invisible hit columns */}
         {coords.map((c, idx) => {
           const stepW = plotW / coords.length;
           return (

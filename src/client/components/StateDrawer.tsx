@@ -145,7 +145,6 @@ export function StateDrawer({
 
   return (
     <aside className="no-print fixed top-20 right-3 bottom-4 z-30 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-lg sm:w-[420px] dark:border-slate-700/70 dark:bg-slate-900/95">
-      {/* Header */}
       <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
@@ -243,9 +242,7 @@ export function StateDrawer({
         </div>
       </div>
 
-      {/* Scrollable Body */}
       <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-2.5">
-        {/* Hero Readout */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
@@ -276,7 +273,6 @@ export function StateDrawer({
           </div>
         </div>
 
-        {/* Top 10 Populated Cities Card (Detailed State Mode) */}
         {detailedStateMode && (
           <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3 dark:border-emerald-500/25 dark:bg-emerald-950/20">
             <div className="mb-2 flex items-center justify-between">
@@ -379,7 +375,6 @@ export function StateDrawer({
           </div>
         )}
 
-        {/* Active NWS Alerts (Live Mode) */}
         {mode === 'live' && detail?.alerts && detail.alerts.length > 0 && (
           <div className="space-y-1.5">
             {detail.alerts.slice(0, 4).map((al) => {
@@ -421,14 +416,12 @@ export function StateDrawer({
           </div>
         )}
 
-        {/* Loading skeleton or Hourly Chart */}
         {isLoading && !detail ? (
           <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
         ) : detail?.hourly?.length ? (
           <HourlyChart hourly={detail.hourly} unit={unit} />
         ) : null}
 
-        {/* Daily Forecast / Window Breakdown */}
         {daily.length > 0 && (
           <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
             <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
@@ -470,7 +463,6 @@ export function StateDrawer({
           </div>
         )}
 
-        {/* Atmospheric Metrics Grid */}
         <div className="grid grid-cols-2 gap-1.5">
           <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
@@ -539,7 +531,6 @@ export function StateDrawer({
           </div>
         </div>
 
-        {/* Sunrise / Sunset */}
         {(current.sunrise || current.sunset) && (
           <div className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -555,7 +546,6 @@ export function StateDrawer({
           </div>
         )}
 
-        {/* Side-by-Side State Comparison Card */}
         {compareCodes.length > 0 && (
           <div className="rounded-xl border border-sky-200/80 bg-sky-50/50 p-3 dark:border-sky-500/25 dark:bg-sky-950/30">
             <div className="mb-2 flex items-center justify-between">
