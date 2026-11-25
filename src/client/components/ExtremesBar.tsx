@@ -1,4 +1,4 @@
-import { Flame, Snowflake, Wind } from 'lucide-react';
+import { Flame, Snowflake, Wind } from './Icons';
 import { Fragment, useMemo } from 'react';
 import type { StateWeatherSnapshot, TempUnit } from '../../shared/types';
 import { formatTemp, formatWind } from '../../shared/units';

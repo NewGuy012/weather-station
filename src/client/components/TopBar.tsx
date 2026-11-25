@@ -7,7 +7,7 @@ import {
   RefreshCw,
   Search,
   Sun,
-} from 'lucide-react';
+} from './Icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HISTORICAL_PRESETS } from '../../shared/presets';
 import type { StateMeta, TempUnit, ThemeMode, WeatherMode } from '../../shared/types';

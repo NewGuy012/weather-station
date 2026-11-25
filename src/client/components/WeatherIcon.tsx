@@ -1,16 +1,5 @@
-import {
-  Cloud,
-  CloudDrizzle,
-  CloudFog,
-  CloudLightning,
-  CloudRain,
-  CloudSnow,
-  CloudSun,
-  Snowflake,
-  Sun,
-} from 'lucide-react';
-import { type WeatherPhenomenon } from '../../shared/weatherPhenomena';
-import { type WeatherCategory, getWmoInfo } from '../../shared/wmoCodes';
+import type { WeatherPhenomenon } from '../../shared/weatherPhenomena';
+import { getWmoInfo } from '../../shared/wmoCodes';
 
 interface WeatherIconProps {
   code: number | null | undefined;
@@ -23,36 +12,26 @@ interface WeatherIconProps {
 const CLOUD_PATH =
   'M7.5 15.5h9.2a3.3 3.3 0 0 0 .4-6.57A4.6 4.6 0 0 0 8.2 7.5a3.7 3.7 0 0 0-.7 8Z';
 
-function categoryToPhenomenon(code: number | null | undefined, category: WeatherCategory): WeatherPhenomenon {
-  if (code === 96 || code === 99) return 'hail';
-  switch (category) {
-    case 'clear':
-      return 'clear';
-    case 'partly-cloudy':
-      return 'partly-cloudy';
-    case 'cloudy':
-      return 'cloudy';
-    case 'fog':
-      return 'fog';
-    case 'drizzle':
-      return 'drizzle';
-    case 'rain':
-      return 'rain';
-    case 'freezing-rain':
-      return 'freezing-rain';
-    case 'snow':
-      return 'snow';
-    case 'thunderstorm':
-      return 'thunderstorm';
-  }
-}
-
-export function resolveIconPhenomenon(
-  code: number | null | undefined,
-  phenomenon?: WeatherPhenomenon,
-): WeatherPhenomenon {
-  if (phenomenon) return phenomenon;
-  return categoryToPhenomenon(code, getWmoInfo(code).category);
+function CloudShape({
+  fill,
+  stroke,
+  strokeWidth = 1.4,
+  transform,
+  opacity,
+  className,
+}: {
+  fill: string;
+  stroke: string;
+  strokeWidth?: number;
+  transform?: string;
+  opacity?: number;
+  className?: string;
+}) {
+  return (
+    <g transform={transform} opacity={opacity} className={className}>
+      <path d={CLOUD_PATH} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
+    </g>
+  );
 }
 
 interface WeatherGlyphProps {
@@ -60,9 +39,7 @@ interface WeatherGlyphProps {
   animated?: boolean;
 }
 
-/**
- * Vector weather artwork in a 24x24 coordinate box. Shared by WeatherIcon and MapCanvas badges.
- */
+/** 24x24 vector weather glyph shared by WeatherIcon and MapCanvas badges. */
 export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps) {
   const anim = (cls: string) => (animated ? cls : undefined);
 
@@ -109,21 +86,15 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
             ))}
           </g>
           <circle cx="16.5" cy="7.5" r="2.7" fill="#fbbf24" />
-          <g className={anim('ws-anim-cloud')} transform="translate(-0.8 2)">
-            <path d={CLOUD_PATH} fill="#cbd5e1" stroke="#64748b" strokeWidth="1.35" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#cbd5e1" stroke="#64748b" strokeWidth={1.35} transform="translate(-0.8 2)" className={anim('ws-anim-cloud')} />
         </g>
       );
 
     case 'cloudy':
       return (
         <g>
-          <g transform="translate(2 -1.2) scale(0.84)" opacity="0.72">
-            <path d={CLOUD_PATH} fill="#94a3b8" stroke="#64748b" strokeWidth="1.3" strokeLinejoin="round" />
-          </g>
-          <g className={anim('ws-anim-cloud')} transform="translate(-0.6 1.5)">
-            <path d={CLOUD_PATH} fill="#cbd5e1" stroke="#64748b" strokeWidth="1.4" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#94a3b8" stroke="#64748b" strokeWidth={1.3} transform="translate(2 -1.2) scale(0.84)" opacity={0.72} />
+          <CloudShape fill="#cbd5e1" stroke="#64748b" transform="translate(-0.6 1.5)" className={anim('ws-anim-cloud')} />
         </g>
       );
 
@@ -134,9 +105,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
         phenomenon === 'aqi' ? '#d97706' : phenomenon === 'humidity' ? '#0ea5e9' : '#94a3b8';
       return (
         <g>
-          <g transform="translate(0 -2.2)">
-            <path d={CLOUD_PATH} fill="#cbd5e1" stroke={barColor} strokeWidth="1.3" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#cbd5e1" stroke={barColor} strokeWidth={1.3} transform="translate(0 -2.2)" />
           <line
             x1="5.5"
             y1="17"
@@ -165,9 +134,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'drizzle':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -1.5)">
-            <path d={CLOUD_PATH} fill="#cbd5e1" stroke="#64748b" strokeWidth="1.35" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#cbd5e1" stroke="#64748b" strokeWidth={1.35} transform="translate(0 -1.5)" className={anim('ws-anim-cloud')} />
           {[8, 12, 16].map((x, idx) => (
             <line
               key={x}
@@ -188,9 +155,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'rain':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -1.8)">
-            <path d={CLOUD_PATH} fill="#94a3b8" stroke="#475569" strokeWidth="1.4" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#94a3b8" stroke="#475569" transform="translate(0 -1.8)" className={anim('ws-anim-cloud')} />
           {[7.8, 12, 16.2].map((x, idx) => (
             <line
               key={x}
@@ -211,9 +176,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'thunderstorm':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -2)">
-            <path d={CLOUD_PATH} fill="#475569" stroke="#312e81" strokeWidth="1.4" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#475569" stroke="#312e81" transform="translate(0 -2)" className={anim('ws-anim-cloud')} />
           <polygon
             points="12.8,13.5 9.8,17.8 12.1,17.8 10.9,21.8 15.2,16.5 12.8,16.5"
             fill="#facc15"
@@ -238,9 +201,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'hail':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -2)">
-            <path d={CLOUD_PATH} fill="#0f766e" stroke="#134e4a" strokeWidth="1.4" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#0f766e" stroke="#134e4a" transform="translate(0 -2)" className={anim('ws-anim-cloud')} />
           <polygon
             points="13.2,13.4 10.8,16.8 12.6,16.8 11.6,19.8 14.8,15.8 12.9,15.8"
             fill="#fde047"
@@ -265,9 +226,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'snow':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -1.8)">
-            <path d={CLOUD_PATH} fill="#e2e8f0" stroke="#64748b" strokeWidth="1.35" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#e2e8f0" stroke="#64748b" strokeWidth={1.35} transform="translate(0 -1.8)" className={anim('ws-anim-cloud')} />
           {[8, 12, 16].map((x, idx) => (
             <g
               key={x}
@@ -285,9 +244,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'blizzard':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(-0.6 -2)">
-            <path d={CLOUD_PATH} fill="#cbd5e1" stroke="#475569" strokeWidth="1.4" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#cbd5e1" stroke="#475569" transform="translate(-0.6 -2)" className={anim('ws-anim-cloud')} />
           {[15.5, 18.2, 20.4].map((y, idx) => (
             <line
               key={y}
@@ -308,9 +265,7 @@ export function WeatherGlyph({ phenomenon, animated = true }: WeatherGlyphProps)
     case 'freezing-rain':
       return (
         <g>
-          <g className={anim('ws-anim-cloud')} transform="translate(0 -1.8)">
-            <path d={CLOUD_PATH} fill="#bae6fd" stroke="#0284c7" strokeWidth="1.35" strokeLinejoin="round" />
-          </g>
+          <CloudShape fill="#bae6fd" stroke="#0284c7" strokeWidth={1.35} transform="translate(0 -1.8)" className={anim('ws-anim-cloud')} />
           <line
             x1="8.4"
             y1="15.8"
@@ -397,46 +352,16 @@ export function WeatherIcon({
   className = '',
   animated = false,
 }: WeatherIconProps) {
-  if (animated) {
-    const resolved = resolveIconPhenomenon(code, phenomenon);
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        width={size}
-        height={size}
-        aria-hidden="true"
-        className={`shrink-0 overflow-visible ${className}`}
-      >
-        <WeatherGlyph phenomenon={resolved} animated />
-      </svg>
-    );
-  }
-
-  const { category } = getWmoInfo(code);
-
-  switch (category) {
-    case 'clear':
-      return <Sun size={size} className={`text-amber-500 dark:text-amber-400 ${className}`} />;
-    case 'partly-cloudy':
-      return <CloudSun size={size} className={`text-amber-500 dark:text-amber-300 ${className}`} />;
-    case 'cloudy':
-      return <Cloud size={size} className={`text-slate-500 dark:text-slate-400 ${className}`} />;
-    case 'fog':
-      return <CloudFog size={size} className={`text-slate-400 dark:text-slate-400 ${className}`} />;
-    case 'drizzle':
-      return <CloudDrizzle size={size} className={`text-sky-500 dark:text-sky-400 ${className}`} />;
-    case 'rain':
-      return <CloudRain size={size} className={`text-blue-500 dark:text-sky-400 ${className}`} />;
-    case 'freezing-rain':
-      return <CloudSnow size={size} className={`text-cyan-500 dark:text-cyan-300 ${className}`} />;
-    case 'snow':
-      return <Snowflake size={size} className={`text-sky-400 dark:text-sky-300 ${className}`} />;
-    case 'thunderstorm':
-      return (
-        <CloudLightning
-          size={size}
-          className={`text-violet-500 dark:text-amber-300 ${className}`}
-        />
-      );
-  }
+  const resolved = phenomenon ?? (code === 96 || code === 99 ? 'hail' : getWmoInfo(code).category);
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      className={`shrink-0 overflow-visible ${className}`}
+    >
+      <WeatherGlyph phenomenon={resolved} animated={animated} />
+    </svg>
+  );
 }

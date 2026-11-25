@@ -1,4 +1,4 @@
-import { Download, FileJson, FileSpreadsheet, Image, Printer, X } from 'lucide-react';
+import { Download, FileJson, FileSpreadsheet, Image, Printer, X } from './Icons';
 import { useState } from 'react';
 import type { StateDetailResponse, TempUnit, WeatherDatasetResponse } from '../../shared/types';
 import { formatTemp, formatWind } from '../../shared/units';

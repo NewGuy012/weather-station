@@ -8,7 +8,7 @@ import {
   Radar,
   RotateCcw,
   Wind,
-} from 'lucide-react';
+} from './Icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ColormapId, MetricLayer, TempUnit, WeatherMode } from '../../shared/types';
 import {

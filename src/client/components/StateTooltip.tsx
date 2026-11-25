@@ -1,4 +1,4 @@
-import { AlertTriangle, Droplets, MapPin, Wind, X } from 'lucide-react';
+import { AlertTriangle, Droplets, MapPin, Wind, X } from './Icons';
 import type { StateWeatherSnapshot, TempUnit, WeatherAlert } from '../../shared/types';
 import { degToCompass, formatPrecip, formatTemp, formatWind } from '../../shared/units';
 import { classifySnapshotPhenomenon } from '../../shared/weatherPhenomena';

@@ -1,4 +1,4 @@
-import { CloudRain, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from 'lucide-react';
+import { CloudRain, Pause, Play, Radar, SkipBack, SkipForward, Sparkles } from './Icons';
 import type { RadarFrame, WeatherMode } from '../../shared/types';
 
 interface BroadcastDockProps {
