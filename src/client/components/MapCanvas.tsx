@@ -71,6 +71,8 @@ interface MapCanvasProps {
   onSelectCity?: (cityName: string) => void;
   /** Optional canvas overlays rendered inside the exact 975x610 map coordinate space */
   overlays?: ReactNode;
+  /** Optional toolbar docked directly beneath the vertical map navigation controls */
+  bottomLeftDock?: ReactNode;
   /** Exposed SVG ref for PNG export */
   mapContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -98,6 +100,7 @@ export function MapCanvas({
   selectedCity = '',
   onSelectCity,
   overlays,
+  bottomLeftDock,
   mapContainerRef,
 }: MapCanvasProps) {
   const geometries = useMemo(() => getUsStateGeometries(), []);
@@ -532,11 +535,12 @@ export function MapCanvas({
   const zoomPct = Math.round(view.zoom * 100);
 
   return (
-    <div
-      ref={viewportRef}
-      className={`relative flex h-full w-full items-center justify-center overflow-hidden select-none ${
-        canDrag ? 'touch-none' : ''
-      }`}
+    <div className="relative h-full w-full overflow-hidden">
+      <div
+        ref={viewportRef}
+        className={`relative flex h-full w-full items-center justify-center overflow-hidden select-none ${
+          canDrag ? 'touch-none' : ''
+        }`}
       style={{
         cursor: isDragging ? 'grabbing' : canDrag ? 'grab' : 'default',
       }}
@@ -886,123 +890,127 @@ export function MapCanvas({
           panActive={isPanActive}
         />
       )}
+      </div>
 
-      <div
-        className="no-print absolute top-4 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        {onToggleDetailedStateMode && (
-          <>
-            <button
-              type="button"
-              onClick={handleControlClick(onToggleDetailedStateMode)}
-              aria-label={
-                detailedStateMode ? 'Disable detailed state mode' : 'Enable detailed state mode'
-              }
-              aria-pressed={detailedStateMode}
-              title={
-                detailedStateMode
-                  ? 'Exit detailed state mode (D)'
-                  : 'Detailed state mode: zoom into state & show top 10 cities (D)'
-              }
-              className={`flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 transition ${
-                detailedStateMode
-                  ? 'bg-emerald-600 text-white shadow-xs dark:bg-emerald-500 dark:text-slate-950'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              <MapPinned size={14} />
-              <kbd
-                className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+      <div className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-1.5 xl:bottom-3">
+        <div
+          role="toolbar"
+          aria-label="Map navigation controls"
+          className="pointer-events-auto relative z-10 flex flex-col items-stretch gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/85"
+        >
+          {onToggleDetailedStateMode && (
+            <>
+              <button
+                type="button"
+                onClick={handleControlClick(onToggleDetailedStateMode)}
+                aria-label={
+                  detailedStateMode ? 'Disable detailed state mode' : 'Enable detailed state mode'
+                }
+                aria-pressed={detailedStateMode}
+                title={
                   detailedStateMode
-                    ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
-                    : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                    ? 'Exit detailed state mode (D)'
+                    : 'Detailed state mode: zoom into state & show top 10 cities (D)'
+                }
+                className={`flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 transition ${
+                  detailedStateMode
+                    ? 'bg-emerald-600 text-white shadow-xs dark:bg-emerald-500 dark:text-slate-950'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                 }`}
               >
-                D
-              </kbd>
-            </button>
-            <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
-          </>
-        )}
-        <button
-          type="button"
-          onClick={handleControlClick(() => setPanMode((v) => !v))}
-          aria-label={panMode ? 'Disable pan mode' : 'Enable pan mode'}
-          aria-pressed={isPanActive}
-          title={
-            panMode
-              ? 'Disable pan mode (P) • Arrow keys pan'
-              : 'Enable pan mode (P) • Hold Space to pan'
-          }
-          className={`flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 transition ${
-            isPanActive
-              ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Hand size={14} />
-          <kbd
-            className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+                <MapPinned size={14} />
+                <kbd
+                  className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+                    detailedStateMode
+                      ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                  }`}
+                >
+                  D
+                </kbd>
+              </button>
+              <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={handleControlClick(() => setPanMode((v) => !v))}
+            aria-label={panMode ? 'Disable pan mode' : 'Enable pan mode'}
+            aria-pressed={isPanActive}
+            title={
+              panMode
+                ? 'Disable pan mode (P) • Arrow keys pan'
+                : 'Enable pan mode (P) • Hold Space to pan'
+            }
+            className={`flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 transition ${
               isPanActive
-                ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
-                : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                ? 'bg-sky-600 text-white shadow-xs dark:bg-sky-500 dark:text-slate-950'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
             }`}
           >
-            P
-          </kbd>
-        </button>
-        <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
-        <button
-          type="button"
-          onClick={handleControlClick(() => zoomByStep(-ZOOM_BUTTON_STEP))}
-          disabled={!canZoomOut}
-          aria-label="Zoom out map"
-          title="Zoom out (-) • Scroll wheel"
-          className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <Minus size={14} />
-          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-            -
-          </kbd>
-        </button>
-        <div
-          aria-label={`Map zoom ${zoomPct}%`}
-          className="min-w-[38px] px-1 text-center tabular-nums text-[11px] font-semibold text-slate-600 dark:text-slate-300"
-        >
-          {zoomPct}%
-        </div>
-        <button
-          type="button"
-          onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
-          disabled={!canZoomIn}
-          aria-label="Zoom in map"
-          title="Zoom in (+ / =) • Scroll wheel"
-          className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <Plus size={14} />
-          <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-            +
-          </kbd>
-        </button>
-        {showReset && (
-          <>
-            <div className="mx-0.5 h-4 w-px bg-slate-200/80 dark:bg-slate-700/60" />
-            <button
-              type="button"
-              onClick={handleControlClick(resetView)}
-              aria-label="Reset map view"
-              title="Reset zoom and pan (0)"
-              className="flex items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
+            <Hand size={14} />
+            <kbd
+              className={`rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${
+                isPanActive
+                  ? 'bg-white/20 text-white dark:bg-slate-950/20 dark:text-slate-950'
+                  : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+              }`}
             >
-              <RotateCcw size={14} />
-              <kbd className="rounded bg-sky-100/80 px-1 py-0.5 text-[9px] font-semibold leading-none text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
-                0
-              </kbd>
-            </button>
-          </>
-        )}
+              P
+            </kbd>
+          </button>
+          <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+          <button
+            type="button"
+            onClick={handleControlClick(() => zoomByStep(ZOOM_BUTTON_STEP))}
+            disabled={!canZoomIn}
+            aria-label="Zoom in map"
+            title="Zoom in (+ / =) • Scroll wheel"
+            className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Plus size={14} />
+            <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+              +
+            </kbd>
+          </button>
+          <div
+            aria-label={`Map zoom ${zoomPct}%`}
+            className="py-0.5 text-center tabular-nums text-[10px] font-semibold text-slate-500 dark:text-slate-400"
+          >
+            {zoomPct}%
+          </div>
+          <button
+            type="button"
+            onClick={handleControlClick(() => zoomByStep(-ZOOM_BUTTON_STEP))}
+            disabled={!canZoomOut}
+            aria-label="Zoom out map"
+            title="Zoom out (-) • Scroll wheel"
+            className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-slate-600 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Minus size={14} />
+            <kbd className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold leading-none text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+              -
+            </kbd>
+          </button>
+          {showReset && (
+            <>
+              <div className="my-0.5 h-px bg-slate-200/80 dark:bg-slate-700/60" />
+              <button
+                type="button"
+                onClick={handleControlClick(resetView)}
+                aria-label="Reset map view"
+                title="Reset zoom and pan (0)"
+                className="flex items-center justify-between gap-1.5 rounded-xl px-1.5 py-1 text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-slate-800"
+              >
+                <RotateCcw size={14} />
+                <kbd className="rounded bg-sky-100/80 px-1 py-0.5 text-[9px] font-semibold leading-none text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
+                  0
+                </kbd>
+              </button>
+            </>
+          )}
+        </div>
+        {bottomLeftDock}
       </div>
     </div>
   );

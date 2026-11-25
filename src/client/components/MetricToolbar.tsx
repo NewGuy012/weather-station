@@ -34,6 +34,7 @@ interface MetricToolbarProps {
   showAlertPolygons: boolean;
   onToggleAlertPolygons: () => void;
   alertsCount: number;
+  docked?: boolean;
 }
 
 export function MetricToolbar({
@@ -52,6 +53,7 @@ export function MetricToolbar({
   showAlertPolygons,
   onToggleAlertPolygons,
   alertsCount,
+  docked = false,
 }: MetricToolbarProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +87,11 @@ export function MetricToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[380px] flex-col gap-1.5 xl:bottom-3"
+      className={
+        docked
+          ? 'no-print pointer-events-none relative z-30 flex max-w-[380px] flex-col gap-1.5'
+          : 'no-print pointer-events-none fixed bottom-24 left-3 z-20 flex max-w-[380px] flex-col gap-1.5 xl:bottom-3'
+      }
     >
       {paletteOpen && (
         <div

@@ -14,7 +14,7 @@ import {
   Wind,
   X,
 } from 'lucide-react';
-import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { Fragment, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   MetricLayer,
   StateCitiesWeatherResponse,
@@ -90,6 +90,7 @@ const SECTION_ACCENT_STYLES: Record<
 };
 
 interface CollapsibleSectionProps {
+  sectionRef?: RefObject<HTMLDivElement | null>;
   accent: SectionAccent;
   highlighted: boolean;
   expanded: boolean;
@@ -103,6 +104,7 @@ interface CollapsibleSectionProps {
 
 /** Accordion card shell shared by collapsible sections in StateDrawer. */
 function CollapsibleSection({
+  sectionRef,
   accent,
   highlighted,
   expanded,
@@ -116,6 +118,7 @@ function CollapsibleSection({
   const styles = SECTION_ACCENT_STYLES[accent];
   return (
     <div
+      ref={sectionRef}
       className={`rounded-xl border transition-colors ${
         highlighted
           ? styles.container
@@ -186,6 +189,15 @@ export function StateDrawer({
   const aqiInfo = aqiCategory(current.usAqi);
   const isComparing = compareCodes.includes(meta.code);
   const isTop10Open = onToggleDetailedStateMode ? detailedStateMode : localTop10Open;
+  const top10Ref = useRef<HTMLDivElement | null>(null);
+  const prevTop10OpenRef = useRef(isTop10Open);
+
+  useEffect(() => {
+    if (!prevTop10OpenRef.current && isTop10Open) {
+      top10Ref.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+    prevTop10OpenRef.current = isTop10Open;
+  }, [isTop10Open]);
 
   const handleToggleTop10 = () => {
     if (onToggleDetailedStateMode) {
@@ -375,7 +387,138 @@ export function StateDrawer({
           </div>
         )}
 
+        {isLoading && !detail ? (
+          <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
+        ) : detail?.hourly?.length ? (
+          <HourlyChart hourly={detail.hourly} unit={unit} />
+        ) : null}
+
+        {daily.length > 0 && (
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+            <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+              {mode === 'historical' ? 'Daily Archive Summary' : '7-Day Forecast'}
+            </div>
+            <div className="grid grid-cols-[max-content_16px_minmax(28px,auto)_1fr_minmax(28px,auto)] items-center gap-x-2 gap-y-1 text-xs">
+              {daily.map((d) => {
+                const leftPct = ((d.tempMinF - weekMin) / weekSpan) * 100;
+                const widthPct = Math.max(8, ((d.tempMaxF - d.tempMinF) / weekSpan) * 100);
+                const dayLabel = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  timeZone: 'UTC',
+                });
+
+                return (
+                  <Fragment key={d.date}>
+                    <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                      {dayLabel}
+                    </span>
+                    <WeatherIcon code={d.weatherCode} size={14} />
+                    <span className="text-right tabular-nums text-[11px] text-slate-400">
+                      {formatTemp(d.tempMinF, unit)}
+                    </span>
+                    <div className="relative h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
+                      <div
+                        className="absolute top-0 h-1.5 rounded-full bg-gradient-to-r from-sky-400 via-amber-400 to-orange-500"
+                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                      />
+                    </div>
+                    <span className="text-right tabular-nums text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                      {formatTemp(d.tempMaxF, unit)}
+                    </span>
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <Wind size={12} />
+              <span>Wind</span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[13px] font-semibold">
+              <ArrowUpRight
+                size={13}
+                style={{ transform: `rotate(${(current.windDirectionDeg + 180) % 360}deg)` }}
+                className="text-sky-500"
+              />
+              <span>
+                {formatWind(current.windSpeedMph, unit)} {degToCompass(current.windDirectionDeg)}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              {current.windGustMph !== null
+                ? `Gusts ${formatWind(current.windGustMph, unit)}`
+                : 'Steady flow'}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <Droplets size={12} />
+              <span>Humidity</span>
+            </div>
+            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
+              {Math.round(current.humidity)}%
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              Dew pt {formatTemp(current.dewPointF, unit, true)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <Gauge size={12} />
+              <span>Pressure</span>
+            </div>
+            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
+              {current.pressureHpa !== null ? `${Math.round(current.pressureHpa)} hPa` : '—'}
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              Precip {formatPrecip(current.precipitationMm, unit)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
+            <div className="text-[11px] text-slate-400">AQI & UV</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold tabular-nums">
+              <span>{current.usAqi !== null ? `${Math.round(current.usAqi)} AQI` : 'N/A'}</span>
+              {current.usAqi !== null && (
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                  style={{ backgroundColor: aqiInfo.color }}
+                >
+                  {aqiInfo.label}
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-400 tabular-nums">
+              UV {current.uvIndex !== null ? `${current.uvIndex.toFixed(1)} (${uvCategory(current.uvIndex)})` : 'N/A'}
+            </div>
+          </div>
+        </div>
+
+        {(current.sunrise || current.sunset) && (
+          <div className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+              <Sunrise size={13} className="text-amber-500" />
+              <span>Sunrise</span>
+              <span className="tabular-nums font-semibold">{formatSunTime(current.sunrise)}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+              <Sunset size={13} className="text-orange-500" />
+              <span>Sunset</span>
+              <span className="tabular-nums font-semibold">{formatSunTime(current.sunset)}</span>
+            </div>
+          </div>
+        )}
+
         <CollapsibleSection
+          sectionRef={top10Ref}
           accent="emerald"
           highlighted={isTop10Open}
           expanded={isTop10Open}
@@ -585,136 +728,6 @@ export function StateDrawer({
             )}
           </div>
         </CollapsibleSection>
-
-        {isLoading && !detail ? (
-          <div className="h-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800/70" />
-        ) : detail?.hourly?.length ? (
-          <HourlyChart hourly={detail.hourly} unit={unit} />
-        ) : null}
-
-        {daily.length > 0 && (
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-              {mode === 'historical' ? 'Daily Archive Summary' : '7-Day Forecast'}
-            </div>
-            <div className="grid grid-cols-[max-content_16px_minmax(28px,auto)_1fr_minmax(28px,auto)] items-center gap-x-2 gap-y-1 text-xs">
-              {daily.map((d) => {
-                const leftPct = ((d.tempMinF - weekMin) / weekSpan) * 100;
-                const widthPct = Math.max(8, ((d.tempMaxF - d.tempMinF) / weekSpan) * 100);
-                const dayLabel = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  timeZone: 'UTC',
-                });
-
-                return (
-                  <Fragment key={d.date}>
-                    <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                      {dayLabel}
-                    </span>
-                    <WeatherIcon code={d.weatherCode} size={14} />
-                    <span className="text-right tabular-nums text-[11px] text-slate-400">
-                      {formatTemp(d.tempMinF, unit)}
-                    </span>
-                    <div className="relative h-1.5 rounded-full bg-slate-200 dark:bg-slate-700">
-                      <div
-                        className="absolute top-0 h-1.5 rounded-full bg-gradient-to-r from-sky-400 via-amber-400 to-orange-500"
-                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                      />
-                    </div>
-                    <span className="text-right tabular-nums text-[11px] font-semibold text-slate-800 dark:text-slate-100">
-                      {formatTemp(d.tempMaxF, unit)}
-                    </span>
-                  </Fragment>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-1.5">
-          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <Wind size={12} />
-              <span>Wind</span>
-            </div>
-            <div className="mt-0.5 flex items-center gap-1.5 tabular-nums text-[13px] font-semibold">
-              <ArrowUpRight
-                size={13}
-                style={{ transform: `rotate(${(current.windDirectionDeg + 180) % 360}deg)` }}
-                className="text-sky-500"
-              />
-              <span>
-                {formatWind(current.windSpeedMph, unit)} {degToCompass(current.windDirectionDeg)}
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 tabular-nums">
-              {current.windGustMph !== null
-                ? `Gusts ${formatWind(current.windGustMph, unit)}`
-                : 'Steady flow'}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <Droplets size={12} />
-              <span>Humidity</span>
-            </div>
-            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
-              {Math.round(current.humidity)}%
-            </div>
-            <div className="text-[11px] text-slate-400 tabular-nums">
-              Dew pt {formatTemp(current.dewPointF, unit, true)}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <Gauge size={12} />
-              <span>Pressure</span>
-            </div>
-            <div className="mt-0.5 tabular-nums text-[13px] font-semibold">
-              {current.pressureHpa !== null ? `${Math.round(current.pressureHpa)} hPa` : '—'}
-            </div>
-            <div className="text-[11px] text-slate-400 tabular-nums">
-              Precip {formatPrecip(current.precipitationMm, unit)}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200/80 px-2.5 py-1.5 dark:border-slate-800">
-            <div className="text-[11px] text-slate-400">AQI & UV</div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold tabular-nums">
-              <span>{current.usAqi !== null ? `${Math.round(current.usAqi)} AQI` : 'N/A'}</span>
-              {current.usAqi !== null && (
-                <span
-                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                  style={{ backgroundColor: aqiInfo.color }}
-                >
-                  {aqiInfo.label}
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-slate-400 tabular-nums">
-              UV {current.uvIndex !== null ? `${current.uvIndex.toFixed(1)} (${uvCategory(current.uvIndex)})` : 'N/A'}
-            </div>
-          </div>
-        </div>
-
-        {(current.sunrise || current.sunset) && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200/80 px-3 py-1.5 text-xs dark:border-slate-800">
-            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <Sunrise size={13} className="text-amber-500" />
-              <span>Sunrise</span>
-              <span className="tabular-nums font-semibold">{formatSunTime(current.sunrise)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <Sunset size={13} className="text-orange-500" />
-              <span>Sunset</span>
-              <span className="tabular-nums font-semibold">{formatSunTime(current.sunset)}</span>
-            </div>
-          </div>
-        )}
       </div>
     </aside>
   );

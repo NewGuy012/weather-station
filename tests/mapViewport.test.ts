@@ -225,11 +225,32 @@ describe('Colormaps & UI Render Smoke Tests', () => {
         stateCitiesWeather: caCitiesWeather,
         selectedCity: 'San Jose',
         onSelectCity: () => {},
+        bottomLeftDock: createElement(MetricToolbar, {
+          metric: 'temperature',
+          onMetricChange: () => {},
+          colormap: 'plasma',
+          onColormapChange: () => {},
+          reverseColormap: false,
+          onToggleReverseColormap: () => {},
+          unit: 'F',
+          mode: 'historical',
+          showRadar: false,
+          onToggleRadar: () => {},
+          showWind: false,
+          onToggleWind: () => {},
+          showAlertPolygons: false,
+          onToggleAlertPolygons: () => {},
+          alertsCount: 0,
+          docked: true,
+        }),
       }),
     );
     expect(mapHtml).toContain('1. Los Angeles');
     expect(mapHtml).toContain('3. San Jose');
     expect(mapHtml).toContain('10. Anaheim');
+    expect(mapHtml).toContain('aria-label="Map navigation controls"');
+    expect(mapHtml).toMatch(/aria-label="Map navigation controls"[^>]*flex-col/);
+    expect(mapHtml).toMatch(/aria-label="Zoom in map"[\s\S]*aria-label="Zoom out map"[\s\S]*Doppler Radar/);
 
     const drawerHtml = renderToStaticMarkup(
       createElement(StateDrawer, {
@@ -260,7 +281,9 @@ describe('Colormaps & UI Render Smoke Tests', () => {
     expect(drawerHtml).toContain('Compare States (0/3)');
     expect(drawerHtml).toContain('Print');
     expect(drawerHtml).toMatch(/value="San Jose"[^>]*selected=""/);
-    expect(drawerHtml).toMatch(/aria-label="Select city"[\s\S]*title="Print state weather report"[\s\S]*Top 10 Populated Cities/);
+    expect(drawerHtml).toMatch(
+      /aria-label="Select city"[\s\S]*title="Print state weather report"[\s\S]*AQI &amp; UV[\s\S]*Top 10 Populated Cities[\s\S]*Compare States \(0\/3\)/,
+    );
 
     const collapsedTop10DrawerHtml = renderToStaticMarkup(
       createElement(StateDrawer, {

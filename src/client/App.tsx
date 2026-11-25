@@ -426,6 +426,27 @@ export function App() {
       : `Live NOAA/Open-Meteo ${dataset.cached ? '• Cached' : '• Fresh'}`
     : 'Loading 50-state archive...';
 
+  const metricToolbar = (
+    <MetricToolbar
+      metric={metric}
+      onMetricChange={setMetric}
+      colormap={colormap}
+      onColormapChange={setColormap}
+      reverseColormap={reverseColormap}
+      onToggleReverseColormap={() => setReverseColormap((r) => !r)}
+      unit={unit}
+      mode={mode}
+      showRadar={showRadar}
+      onToggleRadar={() => setShowRadar((v) => !v)}
+      showWind={showWind}
+      onToggleWind={() => setShowWind((v) => !v)}
+      showAlertPolygons={showAlertPolygons}
+      onToggleAlertPolygons={() => setShowAlertPolygons((v) => !v)}
+      alertsCount={alertsData?.totalActive ?? 0}
+      docked={Boolean(dataset)}
+    />
+  );
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]">
       <TopBar
@@ -499,6 +520,7 @@ export function App() {
             citiesLoading={citiesLoading}
             selectedCity={selectedCity || selectedMeta?.primaryCity || ''}
             onSelectCity={setSelectedCity}
+            bottomLeftDock={metricToolbar}
             mapContainerRef={mapContainerRef}
             overlays={
               <>
@@ -558,23 +580,7 @@ export function App() {
         />
       )}
 
-      <MetricToolbar
-        metric={metric}
-        onMetricChange={setMetric}
-        colormap={colormap}
-        onColormapChange={setColormap}
-        reverseColormap={reverseColormap}
-        onToggleReverseColormap={() => setReverseColormap((r) => !r)}
-        unit={unit}
-        mode={mode}
-        showRadar={showRadar}
-        onToggleRadar={() => setShowRadar((v) => !v)}
-        showWind={showWind}
-        onToggleWind={() => setShowWind((v) => !v)}
-        showAlertPolygons={showAlertPolygons}
-        onToggleAlertPolygons={() => setShowAlertPolygons((v) => !v)}
-        alertsCount={alertsData?.totalActive ?? 0}
-      />
+      {!dataset && metricToolbar}
 
       {dataset && (
         <BroadcastDock
