@@ -9,7 +9,6 @@
   "include": [
     "src/worker",
     "src/server/api.ts",
-    "src/server/cacheTypes.ts",
     "src/server/data",
     "src/server/providers",
     "src/shared"

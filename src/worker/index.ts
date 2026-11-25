@@ -1,23 +1,13 @@
-import { Hono } from 'hono';
 import { handleApiRequest } from '../server/api';
-import { type WaitUntilContext, WorkerWeatherCache } from './cache';
+import { WorkerWeatherCache } from './cache';
 
-const app = new Hono<{ Bindings: Env }>();
-
-app.all('/api/*', async (c) => {
-  let ctx: WaitUntilContext | undefined;
-  try {
-    ctx = c.executionCtx;
-  } catch {
-    // Allow calling app.fetch() directly outside the Workers runtime (e.g. unit tests)
-  }
-
-  const cache = new WorkerWeatherCache(ctx);
-  const response = await handleApiRequest(c.req.raw, cache);
-  if (response) {
-    return response;
-  }
-  return c.json({ error: `Unknown endpoint: ${new URL(c.req.url).pathname}` }, 404);
-});
-
-export default app;
+export default {
+  async fetch(request: Request, _env?: Env, ctx?: ExecutionContext): Promise<Response> {
+    const cache = new WorkerWeatherCache(ctx);
+    const response = await handleApiRequest(request, cache);
+    return (
+      response ??
+      Response.json({ error: `Unknown endpoint: ${new URL(request.url).pathname}` }, { status: 404 })
+    );
+  },
+};

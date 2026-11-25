@@ -3,7 +3,6 @@ import { geoContains } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import usAtlasStates from 'us-atlas/states-10m.json';
-import { WeatherCache } from '../src/server/cache';
 import { US_STATES } from '../src/server/data/states';
 import { TOP_CITIES_BY_STATE } from '../src/server/data/topCities';
 import { parseNwsAlerts } from '../src/server/providers/nws';
@@ -55,28 +54,6 @@ describe('50-State Registry & Seed Integrity', () => {
         expect(geoContains(feat!, [city.lon, city.lat])).toBe(true);
       }
     }
-  });
-});
-
-describe('WeatherCache (bun:sqlite)', () => {
-  test('stores, retrieves, and expires JSON and binary entries', () => {
-    const cache = new WeatherCache(':memory:');
-    const now = 1_000_000;
-
-    cache.setJson('live', { temp: 72 }, 5_000, now);
-    expect(cache.getJson<{ temp: number }>('live', now + 1000)?.value.temp).toBe(72);
-    expect(cache.getJson('live', now + 6000)).toBeNull();
-
-    cache.setJson('hist', { temp: 45 }, null, now);
-    expect(cache.getJson<{ temp: number }>('hist', now + 999_999_999)?.value.temp).toBe(45);
-
-    const bytes = new Uint8Array([137, 80, 78, 71]);
-    cache.setBlob('radar-1', bytes, 'image/png', 10_000, now);
-    const hit = cache.getBlob('radar-1', now + 500);
-    expect(hit?.contentType).toBe('image/png');
-    expect(Array.from(hit?.data ?? [])).toEqual([137, 80, 78, 71]);
-
-    cache.close();
   });
 });
 

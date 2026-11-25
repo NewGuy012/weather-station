@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { handleApiRequest } from '../src/server/api';
-import { WeatherCache } from '../src/server/cache';
 import type { StateCitiesWeatherResponse, WeatherDatasetResponse } from '../src/shared/types';
 import { WorkerWeatherCache, clearWorkerMemoryCache } from '../src/worker/cache';
 import workerApp from '../src/worker/index';
 
 describe('API Router', () => {
   test('serves health, meta, and default historical seed dataset with 50 states', async () => {
-    const cache = new WeatherCache(':memory:');
+    clearWorkerMemoryCache();
+    const cache = new WorkerWeatherCache();
 
     const healthRes = await handleApiRequest(new Request('http://localhost/api/health'), cache);
     expect(healthRes?.status).toBe(200);
@@ -31,12 +31,11 @@ describe('API Router', () => {
     expect(data.source).toBe('seed-archive');
     expect(Object.keys(data.states)).toHaveLength(50);
     expect(data.timelineHours.length).toBeGreaterThanOrEqual(24);
-
-    cache.close();
   });
 
   test('validates query parameters and returns proper error codes', async () => {
-    const cache = new WeatherCache(':memory:');
+    clearWorkerMemoryCache();
+    const cache = new WorkerWeatherCache();
 
     const badRange = await handleApiRequest(
       new Request('http://localhost/api/states?mode=historical&startDate=2024-02-10&endDate=2024-02-01'),
@@ -99,7 +98,7 @@ describe('API Router', () => {
       timelineHours: ['2026-11-24T12:00Z'],
       cities: [],
     };
-    cache.setJson('live:cities:CA', cachedCitiesPayload, 60_000);
+    await cache.setJson('live:cities:CA', cachedCitiesPayload, 60_000);
     const cachedCitiesRes = await handleApiRequest(
       new Request('http://localhost/api/state/CA/cities?mode=live'),
       cache,
@@ -108,8 +107,6 @@ describe('API Router', () => {
     const cachedCitiesJson = (await cachedCitiesRes?.json()) as StateCitiesWeatherResponse;
     expect(cachedCitiesJson.cached).toBe(true);
     expect(cachedCitiesJson.code).toBe('CA');
-
-    cache.close();
   });
 });
 
@@ -141,7 +138,7 @@ describe('Cloudflare Worker Entrypoint & Cache', () => {
     clearWorkerMemoryCache();
   });
 
-  test('Hono Worker routes /api/* requests and serves 50-state baseline dataset', async () => {
+  test('Worker entrypoint routes /api/* requests and serves 50-state baseline dataset', async () => {
     clearWorkerMemoryCache();
 
     const healthRes = await workerApp.fetch(new Request('http://localhost/api/health'));

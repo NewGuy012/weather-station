@@ -8,7 +8,7 @@ import type {
   WeatherDatasetResponse,
   WeatherMode,
 } from '../shared/types';
-import type { WeatherCacheStore } from './cacheTypes';
+import type { WeatherCacheStore } from '../worker/cache';
 import seedHistorical from './data/seedHistorical.json';
 import { STATE_BY_CODE, US_STATES } from './data/states';
 import { TOP_CITIES_BY_STATE } from './data/topCities';
