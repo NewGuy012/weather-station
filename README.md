@@ -1,10 +1,23 @@
-# US Weather Station
+<div align="center">
 
-> **Try it live:** **[https://weather-station.juyoung-m-yoo.workers.dev/](https://weather-station.juyoung-m-yoo.workers.dev/)**
+# US Weather Station
 
 An interactive 50-state US weather atlas with historical archives, live forecasts, animated Doppler radar, wind streamlines, and printable briefings — with zero API keys required.
 
+**Try it live:** **[https://weather-station.juyoung-m-yoo.workers.dev/](https://weather-station.juyoung-m-yoo.workers.dev/)**
+
+<p align="center">
+  <a href="https://bun.sh/"><img src="https://img.shields.io/badge/Bun-%3E%3D1.4-FBF0DF?logo=bun&logoColor=white" alt="Bun >=1.4" /></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-%3E%3D5.8-3178C6?logo=typescript&logoColor=white" alt="TypeScript >=5.8" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-%3E%3D19.1-61DAFB?logo=react&logoColor=white" alt="React >=19.1" /></a>
+  <a href="https://d3js.org/d3-geo"><img src="https://img.shields.io/badge/d3--geo-%3E%3D3.1-F9A03C?logo=d3&logoColor=white" alt="d3-geo >=3.1" /></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-%3E%3D4.1-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS >=4.1" /></a>
+  <a href="https://workers.cloudflare.com/"><img src="https://img.shields.io/badge/Cloudflare_Workers-Edge-F38020?logo=cloudflareworkers&logoColor=white" alt="Cloudflare Workers Edge" /></a>
+</p>
+
 [![US Weather Station — 50-State Weather Map with Live Weather FX (Dark Mode)](docs/screenshot.png)](https://weather-station.juyoung-m-yoo.workers.dev/)
+
+</div>
 
 ## Features
 
